@@ -139,7 +139,7 @@ final class DictationController: ObservableObject {
         let mode = self.mode, selection = self.selection
         Task {
             do {
-                let raw = try await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: dict.map { $0.replacement ?? $0.word })
+                let raw = try await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: dict.map { $0.replacement ?? $0.word }, cloud: settings.cloudSpeech)
                 var text: String
                 var corrected = 0, dictFixes = 0
                 if mode == .command {

@@ -151,6 +151,50 @@ final class WhisperServer {
     }
 }
 
+/// Groq's hosted Whisper, reached through its OpenAI-compatible transcription endpoint.
+struct CloudSpeech: Equatable {
+    let key: String
+    let model: String
+
+    static let models: [(id: String, title: String)] = [
+        ("whisper-large-v3-turbo", "Whisper Large v3 Turbo"),
+        ("whisper-large-v3", "Whisper Large v3"),
+    ]
+
+    func transcribe(wav: Data, language: String, prompt: String) async throws -> String {
+        guard !key.isEmpty else { throw Transcriber.Failure.failed("Add your Groq API key in Settings → Model.") }
+        let boundary = "rattle-\(UUID().uuidString)"
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append(wav); body.append("\r\n".data(using: .utf8)!)
+        field("model", model); field("response_format", "json"); field("temperature", "0")
+        if language != "auto" { field("language", language) }
+        if !prompt.isEmpty { field("prompt", prompt) }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var req = URLRequest(url: URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 30
+
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await URLSession.shared.upload(for: req, from: body) }
+        catch { throw Transcriber.Failure.failed("Couldn't reach Groq. Check your internet connection.") }
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 || status == 403 { throw Transcriber.Failure.failed("Groq rejected the API key. Check it in Settings → Model.") }
+        guard status == 200, let text = json?["text"] as? String else {
+            let detail = (json?["error"] as? [String: Any])?["message"] as? String
+            throw Transcriber.Failure.failed(detail.map { "Groq: \($0)" } ?? "Groq returned an unexpected response (\(status)).")
+        }
+        return text
+    }
+}
+
 enum Transcriber {
     enum Failure: LocalizedError {
         case noEngine, noModel(String), failed(String)
@@ -169,7 +213,10 @@ enum Transcriber {
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    static func transcribe(samples: [Float], model: WhisperModel, language: String, vocabulary: [String]) async throws -> String {
+    static func transcribe(samples: [Float], model: WhisperModel, language: String, vocabulary: [String], cloud: CloudSpeech? = nil) async throws -> String {
+        if let cloud {
+            return try await cloud.transcribe(wav: AudioRecorder.wav(from: samples), language: language, prompt: vocabulary.joined(separator: ", "))
+        }
         guard model.installed else { throw Failure.noModel(model.title) }
         let lang = model.multilingual ? language : "en"
         if WhisperServer.shared.serverPath != nil {

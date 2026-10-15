@@ -18,14 +18,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             src.resume()
             signalSources.append(src)
         }
+        Theme.registerFonts()
         let store = AppStore.shared
+        Theme.apply(store.settings.appearance)
         NSApp.setActivationPolicy(store.settings.showInDock ? .regular : .accessory)
-        NSApp.applicationIconImage = Self.icon()
+        // A bundle built with an Icon Composer icon gets the system's glass styling; only draw our own when it has none.
+        if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconName") == nil { NSApp.applicationIconImage = Self.icon() }
         buildMenus()
         buildStatusItem()
         flowBar.setVisible(store.settings.showFlowBar)
         DictationController.shared.boot()
-        if let m = WhisperModel.all.first(where: { $0.id == store.settings.model }) { WhisperServer.shared.ensure(model: m) }
+        if store.settings.speechEngine == .local, let m = WhisperModel.all.first(where: { $0.id == store.settings.model }) { WhisperServer.shared.ensure(model: m) }
         showHub()
         if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
     }
@@ -55,15 +58,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Keep the window at the size the user chose; pages scroll instead of pushing its minimum size up.
             let host = NSHostingView(rootView: HubView())
             host.sizingOptions = []
+            // The layout draws its own title row, so it always gets the full window, title bar included.
+            // (Relying on ignoresSafeArea left a strip uncovered whenever a page was taller than the area below the title bar.)
+            host.safeAreaRegions = []
             w.contentView = host
+            w.backgroundColor = NSColor(Theme.window)
+            w.contentMinSize = NSSize(width: 960, height: 560)
             w.center()
             w.setFrameAutosaveName("RattleHub2")
             let nc = NotificationCenter.default
-            nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: w, queue: .main) { _ in
-                MainActor.assumeIsolated { Router.shared.isFullScreen = true }
+            // In full screen the toolbar turns into an opaque band that covers our own title row, so hide it there.
+            nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: w, queue: .main) { [weak w] _ in
+                MainActor.assumeIsolated { w?.toolbar?.isVisible = false; Router.shared.isFullScreen = true }
             }
-            nc.addObserver(forName: NSWindow.didExitFullScreenNotification, object: w, queue: .main) { _ in
-                MainActor.assumeIsolated { Router.shared.isFullScreen = false }
+            nc.addObserver(forName: NSWindow.didExitFullScreenNotification, object: w, queue: .main) { [weak w] _ in
+                MainActor.assumeIsolated { w?.toolbar?.isVisible = true; Router.shared.isFullScreen = false }
             }
             hub = w
         }
@@ -111,18 +120,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func icon() -> NSImage {
         let size = NSSize(width: 512, height: 512)
         return NSImage(size: size, flipped: false) { r in
-            NSColor(calibratedRed: 0.11, green: 0.10, blue: 0.09, alpha: 1).setFill()
-            NSBezierPath(roundedRect: r.insetBy(dx: 40, dy: 40), xRadius: 110, yRadius: 110).fill()
-            NSColor.white.setFill()
-            let heights: [CGFloat] = [90, 190, 290, 190, 90]
-            for (i, h) in heights.enumerated() {
-                let x = 130 + CGFloat(i) * 62
-                NSBezierPath(roundedRect: NSRect(x: x, y: 256 - h / 2, width: 34, height: h), xRadius: 17, yRadius: 17).fill()
-            }
+        let s = r.width / 512
+        let body = NSRect(x: 40 * s, y: 40 * s, width: r.width - 80 * s, height: r.width - 80 * s)
+        let radius = 110 * s
+        let path = NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
+    // Soft dark drop shadow, like system icons.
+    NSGraphicsContext.saveGraphicsState()
+    let drop = NSShadow(); drop.shadowColor = NSColor.black.withAlphaComponent(0.45); drop.shadowBlurRadius = 14 * s; drop.shadowOffset = NSSize(width: 0, height: -6 * s)
+    drop.set()
+    NSColor.black.setFill(); path.fill()
+    NSGraphicsContext.restoreGraphicsState()
+        // Dark body with a faint lift at the top.
+        NSGradient(starting: NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.17, alpha: 1), ending: NSColor(calibratedRed: 0.07, green: 0.07, blue: 0.07, alpha: 1))!.draw(in: path, angle: -90)
+        // Waveform, centred on the icon (total width 4 * 62 + 34 = 282).
+        NSGraphicsContext.saveGraphicsState()
+        let bars = NSShadow(); bars.shadowColor = NSColor.white.withAlphaComponent(0.45); bars.shadowBlurRadius = 14 * s; bars.shadowOffset = .zero
+        bars.set()
+        NSColor.white.setFill()
+        let heights: [CGFloat] = [90, 190, 290, 190, 90]
+        for (i, h) in heights.enumerated() {
+            let x = (115 + CGFloat(i) * 62) * s
+            NSBezierPath(roundedRect: NSRect(x: x, y: (256 - h / 2) * s, width: 34 * s, height: h * s), xRadius: 17 * s, yRadius: 17 * s).fill()
+        }
             return true
         }
     }
 }
+
+extension CGPath {
+    var nsPath: NSBezierPath {
+        let p = NSBezierPath()
+        applyWithBlock { e in
+            let pt = e.pointee.points
+            switch e.pointee.type {
+            case .moveToPoint: p.move(to: pt[0])
+            case .addLineToPoint: p.line(to: pt[0])
+            case .addCurveToPoint: p.curve(to: pt[2], controlPoint1: pt[0], controlPoint2: pt[1])
+            case .addQuadCurveToPoint: p.curve(to: pt[1], controlPoint1: pt[0], controlPoint2: pt[0])
+            case .closeSubpath: p.close()
+            @unknown default: break
+            }
+        }
+        return p
+    }
+}
+
+extension NSBezierPath {
+    var cgPath: CGPath {
+        let p = CGMutablePath(); var pts = [NSPoint](repeating: .zero, count: 3)
+        for i in 0..<elementCount {
+            switch element(at: i, associatedPoints: &pts) {
+            case .moveTo: p.move(to: pts[0])
+            case .lineTo: p.addLine(to: pts[0])
+            case .curveTo: p.addCurve(to: pts[2], control1: pts[0], control2: pts[1])
+            case .closePath: p.closeSubpath()
+            default: break
+            }
+        }
+        return p
+    }
+}
+
+
+// `Rattle --mcp` is launched by MCP clients (Claude Desktop, Cursor…) as a headless stdio server.
+if CommandLine.arguments.contains("--mcp") { MCPServer.run() }
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared

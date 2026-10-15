@@ -13,13 +13,13 @@ struct Dropdown<T: Hashable>: View {
     var body: some View {
         Button { menu.open ? menu.close() : show() } label: {
             HStack(spacing: 4) {
-                Text(title).font(.system(size: 15)).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
+                Text(title).font(Theme.sans(15)).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
                 Icon("chevron.down", 14).foregroundStyle(Theme.ink)
                     .frame(width: 24, height: 24).rotationEffect(.degrees(menu.open ? -180 : 0))
             }
             .padding(.leading, 8).padding(.trailing, 4).frame(width: width, height: 36)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white))
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.panel))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line, lineWidth: 1))
             .contentShape(Rectangle())
         }
@@ -105,7 +105,7 @@ private struct DropdownMenu: View {
                 }
             }.padding(4)
         }
-        .background(Color.white)
+        .background(Theme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
     }
@@ -120,7 +120,7 @@ private struct DropdownRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Text(title).font(.system(size: 15, weight: selected ? .semibold : .regular)).foregroundStyle(Theme.ink).lineLimit(1)
+                Text(title).font(Theme.sans(15, selected ? .semibold : .regular)).foregroundStyle(Theme.ink).lineLimit(1)
                 Spacer(minLength: 0)
                 if selected { Icon("checkmark", 14).foregroundStyle(Theme.ink) }
             }

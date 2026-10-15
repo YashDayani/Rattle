@@ -20,7 +20,7 @@ struct HeroCard<Content: View>: View {
 struct HeroHeadline: View {
     let before: String, italic: String, after: String
     var body: some View {
-        (Text(before).font(Theme.serif(40)) + Text(italic).font(.system(size: 40, design: .serif).italic()) + Text(after).font(Theme.serif(40)))
+        (Text(before).font(Theme.serif(40)) + Text(italic).font(Theme.serif(40).italic()) + Text(after).font(Theme.serif(40)))
             .foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -29,8 +29,8 @@ struct ExamplePill: View {
     let text: String
     var cue = false
     var body: some View {
-        Text(text).font(cue ? .system(size: 17, weight: .medium).italic() : .system(size: 17))
-            .foregroundStyle(cue ? Color.white : Theme.ink)
+        Text(text).font(cue ? Theme.sans(17, .medium).italic() : Theme.sans(17))
+            .foregroundStyle(cue ? Color.white : Theme.heroInk)
             .padding(.horizontal, 16).frame(height: 46)
             .background(RoundedRectangle(cornerRadius: 9).fill(cue ? Color.white.opacity(0.28) : Color.white.opacity(0.92)))
     }
@@ -66,7 +66,7 @@ struct SnippetsPage: View {
                     if searching {
                         HStack(spacing: 8) {
                             Icon("magnifyingglass", 16).foregroundStyle(Theme.muted)
-                            TextField("Search snippets", text: $query).textFieldStyle(.plain).font(.system(size: 14))
+                            TextField("Search snippets", text: $query).textFieldStyle(.plain).font(Theme.sans(14))
                         }.padding(.horizontal, 12).frame(height: 32).background(Capsule().fill(Theme.card))
                     }
                     Spacer()
@@ -97,12 +97,12 @@ struct SnippetsPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 HeroHeadline(before: "The stuff ", italic: "you", after: " shouldn’t have to re-type.")
                 Text("Save text you type often — an email, intro, or prompt — then say a word to drop it in instantly.")
-                    .font(.system(size: 17)).foregroundStyle(.white.opacity(0.9)).padding(.bottom, 6)
+                    .font(Theme.sans(17)).foregroundStyle(.white.opacity(0.9)).padding(.bottom, 6)
                 example("“my LinkedIn”", "https://www.linkedin.com/in/john-doe/")
                 example("“rewrite prompt”", "Rewrite this to be more concise…")
                 example("“intro email”", "Hey, would love to find some time to chat later…")
                 Button { new() } label: {
-                    Text("Add new snippet").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.ink)
+                    Text("Add new snippet").font(Theme.sans(16, .medium)).foregroundStyle(Theme.heroInk)
                         .padding(.horizontal, 20).frame(height: 48).background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.95)))
                 }.buttonStyle(.plain).pointer().padding(.top, 14)
             }
@@ -119,15 +119,15 @@ struct SnippetsPage: View {
 
     private func row(_ s: Snippet) -> some View {
         HStack(alignment: .top, spacing: 18) {
-            Text("“\(s.trigger)”").font(.system(size: 14.5, weight: .semibold).italic()).frame(width: 200, alignment: .leading).lineLimit(2)
+            Text("“\(s.trigger)”").font(Theme.sans(14.5, .semibold).italic()).frame(width: 200, alignment: .leading).lineLimit(2)
             Icon("arrow.right", 14).foregroundStyle(Theme.muted).padding(.top, 3)
-            Text(s.expansion).font(.system(size: 14)).foregroundStyle(Theme.ink.opacity(0.85)).frame(maxWidth: .infinity, alignment: .leading).lineLimit(3)
+            Text(s.expansion).font(Theme.sans(14)).foregroundStyle(Theme.ink.opacity(0.85)).frame(maxWidth: .infinity, alignment: .leading).lineLimit(3)
             HStack(spacing: 12) {
                 Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(s.expansion, forType: .string); flash = s.id
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { flash = nil } } label: { Icon(flash == s.id ? "checkmark" : "doc.on.doc", 16) }
                 Button { editing = s; isNew = false } label: { Icon("pencil", 16) }
                 Button { store.snippets.removeAll { $0.id == s.id } } label: { Icon("trash", 16) }
-            }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).font(.system(size: 13))
+            }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).font(Theme.sans(13))
         }
         .padding(.horizontal, 18).padding(.vertical, 15)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
@@ -157,10 +157,10 @@ struct SnippetSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(isNew ? "Add new snippet" : "Edit snippet").font(Theme.serif(26))
-            Text("When you say").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+            Text("When you say").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
             TextField("e.g. my LinkedIn", text: $trigger).textFieldStyle(.roundedBorder)
-            Text("Rattle types").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
-            TextEditor(text: $expansion).font(.system(size: 13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
+            Text("Rattle types").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
+            TextEditor(text: $expansion).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
             HStack {
                 Spacer()
                 PillButton(title: "Cancel", action: cancel)

@@ -20,6 +20,28 @@ struct DictionaryEntry: Codable, Identifiable, Equatable {
     var replacement: String?
 }
 
+struct Note: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var text = ""
+    var created = Date()
+    var updated = Date()
+    var pinned = false
+
+    private var lines: [Substring] { text.split(separator: "\n", omittingEmptySubsequences: true).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+    /// The first non-empty line.
+    var title: String { lines.first.map { $0.trimmingCharacters(in: .whitespaces) } ?? "New note" }
+    /// Everything after the title line.
+    var preview: String { lines.dropFirst().map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n") }
+    var words: Int { text.split { $0 == " " || $0.isNewline }.count }
+    /// Time for today, "Yesterday", otherwise the date.
+    var updatedLabel: String {
+        let cal = Calendar.current
+        if cal.isDateInToday(updated) { return updated.formatted(date: .omitted, time: .shortened) }
+        if cal.isDateInYesterday(updated) { return "Yesterday" }
+        return updated.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+}
+
 struct Snippet: Codable, Identifiable, Equatable {
     var id = UUID()
     var trigger: String
@@ -49,6 +71,14 @@ struct Meeting: Codable, Identifiable, Equatable {
     var summary: String = ""
     var summaryError: String? = nil
     var capturedSystemAudio: Bool = false
+    /// File name of the meeting's recording inside `AppStore.recordingsDir`, if one was saved.
+    var audioFile: String? = nil
+
+    var audioURL: URL? {
+        guard let f = audioFile else { return nil }
+        let u = AppStore.recordingsDir.appendingPathComponent(f)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
 }
 
 enum Tone: String, Codable, CaseIterable, Identifiable {
@@ -133,11 +163,35 @@ enum CleanupLevel: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
+/// Where speech is turned into text: whisper.cpp on this Mac, or Groq's hosted Whisper.
+enum SpeechEngine: String, Codable, CaseIterable, Identifiable {
+    case local, cloud
+    var id: String { rawValue }
+}
+
 struct Settings: Codable, Equatable {
     var shortcut: Shortcut = .fn
     var micUID: String? = nil
     var language: String = "en"
     var model: String = "base.en"
+    var speechEngine: SpeechEngine = .local
+    var groqKey: String = ""
+    var groqModel: String = "whisper-large-v3-turbo"
+    /// Cloud credentials for the transcriber, or nil when transcribing locally.
+    var cloudSpeech: CloudSpeech? { speechEngine == .cloud ? CloudSpeech(key: groqKey, model: groqModel) : nil }
+    var cloudSpeechReady: Bool { speechEngine == .cloud && !groqKey.isEmpty }
     var soundsEnabled: Bool = true
     var cleanup: CleanupLevel = .light
     var tones: [String: Tone] = [
@@ -146,6 +200,7 @@ struct Settings: Codable, Equatable {
         StyleCategory.email.rawValue: .formal,
         StyleCategory.other.rawValue: .formal
     ]
+    var appearance: AppearanceMode = .system
     var showInDock: Bool = true
     var showFlowBar: Bool = true
     var launchAtLogin: Bool = false
@@ -161,6 +216,15 @@ struct Settings: Codable, Equatable {
     // Notetaker
     var notetakerSummaries: Bool = true
     var notetakerCaptureSystemAudio: Bool = true
+    var notetakerSaveAudio: Bool = true
+    // MCP (local server other apps launch via `Rattle --mcp`)
+    var mcpEnabled: Bool = true
+    var mcpNotes: Bool = true
+    var mcpMeetings: Bool = true
+    var mcpDictations: Bool = true
+    var mcpSnippets: Bool = true
+    /// Lets connected apps rename, edit and delete notes and meetings. Off until the user turns it on.
+    var mcpAllowEdits: Bool = false
 
     init() {}
 
@@ -171,9 +235,13 @@ struct Settings: Codable, Equatable {
         micUID = try c.decodeIfPresent(String.self, forKey: .micUID)
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? d.language
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
+        speechEngine = try c.decodeIfPresent(SpeechEngine.self, forKey: .speechEngine) ?? d.speechEngine
+        groqKey = try c.decodeIfPresent(String.self, forKey: .groqKey) ?? d.groqKey
+        groqModel = try c.decodeIfPresent(String.self, forKey: .groqModel) ?? d.groqModel
         soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? d.soundsEnabled
         cleanup = try c.decodeIfPresent(CleanupLevel.self, forKey: .cleanup) ?? d.cleanup
         tones = try c.decodeIfPresent([String: Tone].self, forKey: .tones) ?? d.tones
+        appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? d.appearance
         showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? d.showInDock
         showFlowBar = try c.decodeIfPresent(Bool.self, forKey: .showFlowBar) ?? d.showFlowBar
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
@@ -186,11 +254,20 @@ struct Settings: Codable, Equatable {
         commandShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .commandShortcut) ?? d.commandShortcut
         notetakerSummaries = try c.decodeIfPresent(Bool.self, forKey: .notetakerSummaries) ?? d.notetakerSummaries
         notetakerCaptureSystemAudio = try c.decodeIfPresent(Bool.self, forKey: .notetakerCaptureSystemAudio) ?? d.notetakerCaptureSystemAudio
+        notetakerSaveAudio = try c.decodeIfPresent(Bool.self, forKey: .notetakerSaveAudio) ?? d.notetakerSaveAudio
+        mcpEnabled = try c.decodeIfPresent(Bool.self, forKey: .mcpEnabled) ?? d.mcpEnabled
+        mcpNotes = try c.decodeIfPresent(Bool.self, forKey: .mcpNotes) ?? d.mcpNotes
+        mcpMeetings = try c.decodeIfPresent(Bool.self, forKey: .mcpMeetings) ?? d.mcpMeetings
+        mcpDictations = try c.decodeIfPresent(Bool.self, forKey: .mcpDictations) ?? d.mcpDictations
+        mcpSnippets = try c.decodeIfPresent(Bool.self, forKey: .mcpSnippets) ?? d.mcpSnippets
+        mcpAllowEdits = try c.decodeIfPresent(Bool.self, forKey: .mcpAllowEdits) ?? d.mcpAllowEdits
     }
 
     enum Keys: String, CodingKey {
-        case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, showInDock, showFlowBar, launchAtLogin, userName
-        case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio
+        case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
+        case speechEngine, groqKey, groqModel
+        case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
+        case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits
     }
 }
 
@@ -204,10 +281,16 @@ final class AppStore: ObservableObject {
     @Published var settings = Settings() { didSet { save(settings, "settings") } }
     @Published var customTransforms: [Transform] = [] { didSet { save(customTransforms, "transforms") } }
     @Published var meetings: [Meeting] = [] { didSet { save(meetings, "meetings") } }
-    @Published var scratchpad: String = "" { didSet { try? scratchpad.write(to: url("scratchpad.txt"), atomically: true, encoding: .utf8) } }
+    @Published var notes: [Note] = [] { didSet { save(notes, "notes") } }
 
-    static let supportDir: URL = {
+    nonisolated static let supportDir: URL = {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Rattle")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
+
+    nonisolated static let recordingsDir: URL = {
+        let d = supportDir.appendingPathComponent("Recordings")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()
@@ -221,8 +304,36 @@ final class AppStore: ObservableObject {
         settings = load("settings") ?? Settings()
         customTransforms = load("transforms") ?? []
         meetings = load("meetings") ?? []
-        scratchpad = (try? String(contentsOf: url("scratchpad.txt"), encoding: .utf8)) ?? ""
+        if let saved: [Note] = load("notes") {
+            notes = saved
+        } else if let old = try? String(contentsOf: url("scratchpad.txt"), encoding: .utf8), !old.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // First launch with Notes: carry the old Scratchpad text over as a note. scratchpad.txt is left in place.
+            notes = [Note(text: old)]
+        }
         loading = false
+        for n in Self.watched { seen[n] = modified(n) }
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.reloadExternalChanges() } }
+    }
+
+    // Other processes (the MCP server) can edit these files. Pick those edits up, and never save while applying them.
+    private static let watched = ["meetings", "notes", "snippets", "dictionary"]
+    private var seen: [String: Date] = [:]
+    private func modified(_ name: String) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url(name + ".json").path))?[.modificationDate] as? Date
+    }
+    private func reloadExternalChanges() {
+        for n in Self.watched {
+            let m = modified(n)
+            guard m != seen[n] else { continue }
+            seen[n] = m
+            loading = true; defer { loading = false }
+            switch n {
+            case "meetings": if let v: [Meeting] = load(n) { meetings = v }
+            case "notes": if let v: [Note] = load(n) { notes = v }
+            case "snippets": if let v: [Snippet] = load(n) { snippets = v }
+            default: if let v: [DictionaryEntry] = load(n) { dictionary = v }
+            }
+        }
     }
 
     private func url(_ name: String) -> URL { Self.supportDir.appendingPathComponent(name) }
@@ -237,6 +348,7 @@ final class AppStore: ObservableObject {
         if loading { return }
         let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; e.outputFormatting = .prettyPrinted
         try? e.encode(value).write(to: url(name + ".json"), options: .atomic)
+        if Self.watched.contains(name) { seen[name] = modified(name) }
     }
 
     var allTransforms: [Transform] { Transforms.builtIns + customTransforms }

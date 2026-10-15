@@ -2,14 +2,16 @@ import SwiftUI
 import ServiceManagement
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general = "General", system = "System", notetaker = "Notetaker", ai = "AI", model = "Model", privacy = "Data and Privacy"
+    case general = "General", system = "System", notetaker = "Meetings", ai = "AI", mcp = "MCP", migration = "Migration", model = "Model", privacy = "Data and Privacy"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: return "slider.horizontal.3"
         case .system: return "laptopcomputer"
         case .notetaker: return "record.circle"
-        case .ai: return "sparkles"
+        case .ai: return "sparkle"
+        case .mcp: return "powerplug"
+        case .migration: return "square.and.arrow.down"
         case .model: return "cpu"
         case .privacy: return "shield"
         }
@@ -29,12 +31,12 @@ struct SettingsModal: View {
                     AppIconView(size: 22)
                     Text("Rattle").font(.system(size: 15, weight: .semibold, design: .rounded))
                 }.padding(.leading, 10).padding(.bottom, 14)
-                Text("SETTINGS").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted).padding(.leading, 12).padding(.bottom, 8)
+                Text("SETTINGS").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.leading, 12).padding(.bottom, 8)
                 ForEach(SettingsTab.allCases) { t in
                     Button { tab = t } label: {
                         HStack(spacing: 10) {
-                            Icon(t.icon, 16).frame(width: 20)
-                            Text(t.rawValue).font(.system(size: 14, weight: .medium))
+                            Icon(t.icon, 20).frame(width: 20, height: 20)
+                            Text(t.rawValue).font(Theme.sans(14, .medium))
                             Spacer()
                         }.foregroundStyle(Theme.ink).padding(.horizontal, 12).frame(height: 36)
                             .background(RoundedRectangle(cornerRadius: 8).fill(tab == t ? Theme.selected : .clear))
@@ -42,14 +44,14 @@ struct SettingsModal: View {
                     }.buttonStyle(.plain).pointer()
                 }
                 Spacer()
-                Text("Rattle v1.0").font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.leading, 12)
+                Text("Rattle v1.0").font(Theme.sans(11)).foregroundStyle(Theme.muted).padding(.leading, 12)
             }
-            .padding(.horizontal, 10).padding(.vertical, 22).frame(width: 210).background(Color(red: 0.957, green: 0.949, blue: 0.929))
+            .padding(.horizontal, 10).padding(.vertical, 22).frame(width: 210).background(Theme.window)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack {
-                        Text(tab.rawValue).font(Theme.serif(30)); Spacer()
+                        Text(tab.rawValue).font(Theme.serif(28)).tracking(-1.1); Spacer()
                         Button(action: close) { Icon("xmark", 15) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
                     }
                     switch tab {
@@ -57,11 +59,13 @@ struct SettingsModal: View {
                     case .system: SystemTab()
                     case .notetaker: NotetakerTab()
                     case .ai: AITab()
+                    case .mcp: MCPTab()
+                    case .migration: MigrationTab()
                     case .model: ModelTab()
                     case .privacy: PrivacyTab()
                     }
                 }.padding(.horizontal, 44).padding(.vertical, 40)
-            }.background(Color.white)
+            }.background(Theme.panel)
         }
         .frame(width: 960, height: 640)
         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -89,7 +93,8 @@ struct GeneralTab: View {
         .onAppear { mics = AudioDevices.inputs() }
     }
     private var languageNote: String {
-        (WhisperModel.all.first { $0.id == store.settings.model }?.multilingual ?? false) ? "Whisper will transcribe in this language." : "English-only model selected. Pick a multilingual model to change language."
+        if store.settings.speechEngine == .cloud { return "Groq will transcribe in this language." }
+        return (WhisperModel.all.first { $0.id == store.settings.model }?.multilingual ?? false) ? "Whisper will transcribe in this language." : "English-only model selected. Pick a multilingual model to change language."
     }
     static let languages = [("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("hi", "Hindi"), ("ja", "Japanese"), ("ko", "Korean"), ("zh", "Chinese"), ("ar", "Arabic"), ("ru", "Russian"), ("auto", "Auto-detect")]
 }
@@ -98,26 +103,30 @@ struct SystemTab: View {
     @ObservedObject var store = AppStore.shared
     var body: some View {
         Card {
+            SettingRow(title: "Appearance", detail: "Follow macOS, or always use light or dark.") {
+                Dropdown(selection: Binding(get: { store.settings.appearance }, set: { store.settings.appearance = $0; Theme.apply($0) }),
+                         options: AppearanceMode.allCases.map { ($0, $0.title) }, width: 160)
+            }
             SettingRow(title: "Launch Rattle at login", detail: "Start in the menu bar when you sign in.") {
                 Toggle("", isOn: Binding(get: { store.settings.launchAtLogin }, set: { on in
                     store.settings.launchAtLogin = on
                     if on { try? SMAppService.mainApp.register() } else { try? SMAppService.mainApp.unregister() }
-                })).toggleStyle(.switch).labelsHidden()
+                })).toggleStyle(ThemeSwitchStyle()).labelsHidden()
             }
             SettingRow(title: "Show app in Dock", detail: "Otherwise Rattle lives only in the menu bar.") {
                 Toggle("", isOn: Binding(get: { store.settings.showInDock }, set: {
                     store.settings.showInDock = $0
                     NSApp.setActivationPolicy($0 ? .regular : .accessory)
-                })).toggleStyle(.switch).labelsHidden()
+                })).toggleStyle(ThemeSwitchStyle()).labelsHidden()
             }
             SettingRow(title: "Show Flow Bar", detail: "The pill at the bottom of your screen while dictating.") {
                 Toggle("", isOn: Binding(get: { store.settings.showFlowBar }, set: {
                     store.settings.showFlowBar = $0
                     (NSApp.delegate as? AppDelegate)?.flowBar.setVisible($0)
-                })).toggleStyle(.switch).labelsHidden()
+                })).toggleStyle(ThemeSwitchStyle()).labelsHidden()
             }
             SettingRow(title: "Dictation sounds", detail: "Play a soft cue when dictation starts and stops.", last: true) {
-                Toggle("", isOn: $store.settings.soundsEnabled).toggleStyle(.switch).labelsHidden()
+                Toggle("", isOn: $store.settings.soundsEnabled).toggleStyle(ThemeSwitchStyle()).labelsHidden()
             }
         }
     }
@@ -128,7 +137,59 @@ struct ModelTab: View {
     @ObservedObject var dl = ModelDownloader.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Rattle transcribes on your Mac with whisper.cpp. Audio never leaves your device.").font(.system(size: 13.5)).foregroundStyle(Theme.muted)
+            HStack(spacing: 12) {
+                engineOption(.local, icon: "laptopcomputer", title: "Local", detail: "whisper.cpp on this Mac. Audio never leaves your device.")
+                engineOption(.cloud, icon: "cloud", title: "Cloud", detail: "Groq's hosted Whisper. Faster, but audio is sent to Groq.")
+            }
+            if store.settings.speechEngine == .cloud { cloudSettings } else { localSettings }
+        }
+    }
+
+    private func engineOption(_ engine: SpeechEngine, icon: String, title: String, detail: String) -> some View {
+        let on = store.settings.speechEngine == engine
+        return Button { select(engine) } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Icon(icon, 20).foregroundStyle(Theme.ink).padding(.top, 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
+                    Text(detail).font(Theme.sans(13.5)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Icon(on ? "checkmark.circle.fill" : "circle", 18).foregroundStyle(on ? Theme.ink : Theme.switchOff)
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(on ? Theme.ink : Theme.line, lineWidth: on ? 1.5 : 1))
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain).pointer()
+    }
+
+    private func select(_ engine: SpeechEngine) {
+        guard store.settings.speechEngine != engine else { return }
+        store.settings.speechEngine = engine
+        // Only keep the local speech server running while it is the engine in use.
+        if engine == .local, let m = WhisperModel.all.first(where: { $0.id == store.settings.model }) { WhisperServer.shared.ensure(model: m) }
+        else { WhisperServer.shared.stop() }
+    }
+
+    private var cloudSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Card {
+                SettingRow(title: "Groq API key", detail: "Stored on this Mac. Create one at console.groq.com/keys.") {
+                    SecureField("gsk_…", text: $store.settings.groqKey).textFieldStyle(.roundedBorder).frame(width: 260)
+                }
+                SettingRow(title: "Model", detail: "Turbo is faster; Large v3 is the most accurate.", last: true) {
+                    Dropdown(selection: $store.settings.groqModel, options: CloudSpeech.models.map { ($0.id, $0.title) }, width: 260)
+                }
+            }
+            if store.settings.groqKey.isEmpty {
+                Text("Add a key to start using cloud transcription. Until then dictation will show an error.").font(Theme.sans(13)).foregroundStyle(Theme.muted)
+            }
+        }
+    }
+
+    private var localSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
             Card {
                 ForEach(Array(WhisperModel.all.enumerated()), id: \.element.id) { i, m in
                     SettingRow(title: m.title, detail: m.size + (m.installed ? " · Downloaded" : ""), last: i == WhisperModel.all.count - 1) {
@@ -136,14 +197,14 @@ struct ModelTab: View {
                             if let p = dl.progress[m.id] { ProgressView(value: p).frame(width: 90) }
                             else if !m.installed { PillButton(title: "Download") { dl.download(m) } }
                             if m.installed {
-                                if store.settings.model == m.id { Label { Text("Active") } icon: { Icon("checkmark.circle.fill", 14) }.font(.system(size: 12.5, weight: .medium)).foregroundStyle(.green) }
+                                if store.settings.model == m.id { Label { Text("Active") } icon: { Icon("checkmark.circle.fill", 14) }.font(Theme.sans(12.5, .medium)).foregroundStyle(.green) }
                                 else { PillButton(title: "Use") { store.settings.model = m.id } }
                             }
                         }
                     }
                 }
             }
-            if let e = dl.error { Text(e).font(.system(size: 12)).foregroundStyle(.red) }
+            if let e = dl.error { Text(e).font(Theme.sans(12)).foregroundStyle(.red) }
             Card {
                 SettingRow(title: "whisper.cpp engine", detail: Transcriber.enginePath ?? "Not found. Install with: brew install whisper-cpp", last: true) {
                     Icon(Transcriber.enginePath != nil ? "checkmark.circle.fill" : "xmark.circle", 16).foregroundStyle(Transcriber.enginePath != nil ? .green : .red)
@@ -158,7 +219,11 @@ struct PrivacyTab: View {
     @LocalState private var confirm = false
     var body: some View {
         Card {
-            SettingRow(title: "Local-only processing", detail: "Transcription runs on-device. No audio or text is sent anywhere.") { Icon("lock.fill", 16).foregroundStyle(Theme.muted) }
+            if store.settings.speechEngine == .cloud {
+                SettingRow(title: "Cloud transcription", detail: "Audio is sent to Groq to be transcribed. Switch to Local in Settings → Model to keep it on this Mac.") { Icon("cloud", 16).foregroundStyle(Theme.muted) }
+            } else {
+                SettingRow(title: "Local-only processing", detail: "Transcription runs on-device. No audio or text is sent anywhere.") { Icon("lock.fill", 16).foregroundStyle(Theme.muted) }
+            }
             SettingRow(title: "Dictation history", detail: "\(store.history.count) saved on this Mac in Application Support/Rattle.") {
                 PillButton(title: "Clear") { confirm = true }
             }
@@ -179,14 +244,17 @@ struct NotetakerTab: View {
         VStack(alignment: .leading, spacing: 14) {
             Card {
                 SettingRow(title: "Record call audio", detail: "Capture what your Mac is playing so the other side of a call is transcribed too. macOS asks for System Audio Recording permission the first time.") {
-                    Toggle("", isOn: $store.settings.notetakerCaptureSystemAudio).toggleStyle(.switch).labelsHidden()
+                    Toggle("", isOn: $store.settings.notetakerCaptureSystemAudio).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                }
+                SettingRow(title: "Keep the recording", detail: "Save each meeting's audio on this Mac so you can listen back or download it later.") {
+                    Toggle("", isOn: $store.settings.notetakerSaveAudio).toggleStyle(ThemeSwitchStyle()).labelsHidden()
                 }
                 SettingRow(title: "Write notes automatically", detail: "When a recording ends, summarize it with your AI model (title, summary, decisions, action items).", last: true) {
-                    Toggle("", isOn: $store.settings.notetakerSummaries).toggleStyle(.switch).labelsHidden()
+                    Toggle("", isOn: $store.settings.notetakerSummaries).toggleStyle(ThemeSwitchStyle()).labelsHidden()
                 }
             }
             Text("Transcription uses your on-device speech model. Only the transcript text is sent to your AI model, and with a local model it never leaves this Mac.")
-                .font(.system(size: 12.5)).foregroundStyle(Theme.muted)
+                .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
         }
     }
 }
@@ -199,8 +267,8 @@ struct AITab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Notetaker summaries and Transforms use any OpenAI-compatible server. Rattle defaults to LM Studio running on this Mac.")
-                .font(.system(size: 13.5)).foregroundStyle(Theme.muted)
+            Text("Meeting summaries and Transforms use any OpenAI-compatible server. Rattle defaults to LM Studio running on this Mac.")
+                .font(Theme.sans(13.5)).foregroundStyle(Theme.muted)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     preset("LM Studio", "http://localhost:1234/v1")
@@ -231,10 +299,10 @@ struct AITab: View {
             }
             HStack(spacing: 12) {
                 PillButton(title: testing ? "Testing…" : "Test connection", prominent: true) { test() }.disabled(testing)
-                Text(status).font(.system(size: 13)).foregroundStyle(status.hasPrefix("Connected") ? .green : Theme.muted)
+                Text(status).font(Theme.sans(13)).foregroundStyle(status.hasPrefix("Connected") ? .green : Theme.muted)
             }
             Text("Running LM Studio? Start its server from the Developer tab or with: lms server start")
-                .font(.system(size: 12.5)).foregroundStyle(Theme.muted)
+                .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
         }
         .onAppear { test() }
     }

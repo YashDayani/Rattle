@@ -1,17 +1,44 @@
 import SwiftUI
 
 enum Theme {
-    static let window = Color(red: 0.961, green: 0.957, blue: 0.941)
-    static let panel = Color.white
-    static let card = Color(red: 0.961, green: 0.957, blue: 0.941)
-    static let button = Color(red: 0.933, green: 0.922, blue: 0.890)
-    static let selected = Color(red: 0.933, green: 0.922, blue: 0.890)
-    static let ink = Color(red: 0.102, green: 0.102, blue: 0.102)
-    static let muted = Color(red: 0.443, green: 0.443, blue: 0.431)
-    static let line = Color(red: 0.933, green: 0.922, blue: 0.890)
-    static let accent = Color(red: 0.102, green: 0.102, blue: 0.102)
+    /// A colour that follows the current appearance: `light` in Aqua, `dark` in Dark Aqua (both 0xRRGGBB).
+    static func dyn(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+        })
+    }
 
-    static func serif(_ size: CGFloat) -> Font { .system(size: size, weight: .regular, design: .serif) }
+    static let window = dyn(0xf5f4f0, 0x202020)
+    static let panel = dyn(0xffffff, 0x1a1a1a)      // inputs, menus and the settings sheet
+    static let card = dyn(0xf5f4f0, 0x202020)
+    static let button = dyn(0xeeebe3, 0x30302f)
+    static let selected = dyn(0xeeebe3, 0x30302f)
+    static let ink = dyn(0x1a1a1a, 0xe9e8e1)
+    static let muted = dyn(0x71716e, 0x9d9c98)
+    static let line = dyn(0xeeebe3, 0x30302f)
+    static let accent = ink
+    static let onInk = dyn(0xffffff, 0x1a1a1a)      // text and glyphs on an ink-filled control
+    static let switchOff = dyn(0xc5c0b3, 0x5b5b59)
+    static let heroInk = Color(red: 0.102, green: 0.102, blue: 0.102)   // dark text on the always-light controls inside hero cards
+
+    @MainActor static func apply(_ mode: AppearanceMode) {
+        switch mode {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
+    static func sans(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { Font.custom("Figtree", size: size).weight(weight) }
+    static func serif(_ size: CGFloat) -> Font { Font.custom("EB Garamond", size: size) }
+
+    /// Registers the bundled fonts (Resources/Fonts) for this process. Without them the custom fonts fall back to the system font.
+    static func registerFonts() {
+        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("Fonts"),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for url in files where url.pathExtension == "ttf" { CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) }
+    }
 }
 
 struct PillButton: View {
@@ -20,11 +47,27 @@ struct PillButton: View {
     var action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(prominent ? Color.white : Theme.ink)
+            Text(title).font(Theme.sans(13, .semibold))
+                .foregroundStyle(prominent ? Theme.onInk : Theme.ink)
                 .padding(.horizontal, 16).frame(height: 34)
                 .background(RoundedRectangle(cornerRadius: 8).fill(prominent ? Theme.ink : Theme.button))
         }.buttonStyle(.plain).pointer()
+    }
+}
+
+/// Switch drawn in theme colours: ink track when on, neutral when off.
+struct ThemeSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Capsule().fill(configuration.isOn ? Theme.ink : Theme.switchOff)
+            .frame(width: 42, height: 25)
+            .overlay(alignment: .leading) {
+                Circle().fill(configuration.isOn ? Theme.page : Color.white)
+                    .frame(width: 21, height: 21).padding(2).offset(x: configuration.isOn ? 17 : 0)
+            }
+            .animation(.easeOut(duration: 0.15), value: configuration.isOn)
+            .contentShape(Capsule())
+            .onTapGesture { configuration.isOn.toggle() }
+            .pointer()
     }
 }
 
@@ -44,14 +87,14 @@ struct SettingRow<Trailing: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(Theme.ink)
-                    Text(detail).font(.system(size: 13.5)).foregroundStyle(Theme.muted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
+                    Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 16)
                 trailing
-            }.padding(.horizontal, 26).padding(.vertical, 22)
-            if !last { Divider().overlay(Theme.line).padding(.horizontal, 26) }
+            }.padding(.horizontal, 20).padding(.vertical, 16)
+            if !last { Divider().overlay(Theme.line).padding(.horizontal, 20) }
         }
     }
 }
@@ -63,8 +106,8 @@ struct PageHeader<Trailing: View>: View {
     var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.system(size: 28, weight: .semibold)).foregroundStyle(Theme.ink)
-                if let s = subtitle { Text(s).font(.system(size: 14)).foregroundStyle(Theme.muted) }
+                Text(title).font(Theme.sans(24, .semibold)).foregroundStyle(Theme.ink)
+                if let s = subtitle { Text(s).font(Theme.sans(15)).foregroundStyle(Theme.muted) }
             }
             Spacer()
             trailing

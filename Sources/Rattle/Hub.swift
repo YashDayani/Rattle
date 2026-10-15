@@ -2,7 +2,7 @@ import SwiftUI
 import Charts
 
 enum HubPage: String, CaseIterable, Identifiable {
-    case dictation = "Dictation", notetaker = "Notetaker", insights = "Insights", dictionary = "Dictionary", snippets = "Snippets", style = "Style", transforms = "Transforms", scratchpad = "Scratchpad"
+    case dictation = "Dictation", notetaker = "Meetings", insights = "Insights", dictionary = "Dictionary", snippets = "Snippets", style = "Style", transforms = "Transforms", notes = "Notes"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -13,7 +13,7 @@ enum HubPage: String, CaseIterable, Identifiable {
         case .dictionary: return "text.book.closed"
         case .snippets: return "scissors"
         case .style: return "textformat"
-        case .scratchpad: return "note.text"
+        case .notes: return "note.text"
         }
     }
 }
@@ -52,10 +52,10 @@ struct HubView: View {
                         case .dictionary: DictionaryPage()
                         case .snippets: SnippetsPage()
                         case .style: StylePage()
-                        case .scratchpad: ScratchpadPage()
+                        case .notes: NotesPage()
                         }
                     }
-                    .frame(maxWidth: 1100)
+                    .frame(maxWidth: 1046)
                     .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 24)
                 }
                 .padding(.top, titleRow).padding(.trailing, gap).padding(.bottom, gap)
@@ -72,7 +72,6 @@ struct HubView: View {
             }
         }
         .background(Theme.window)
-        .ignoresSafeArea(.container, edges: .top)
         .animation(.easeOut(duration: 0.16), value: router.showSettings)
         .animation(.easeOut(duration: 0.2), value: router.isFullScreen)
     }
@@ -84,8 +83,8 @@ struct HubView: View {
                 .popover(isPresented: $showBell, arrowEdge: .bottom) {
                     VStack(spacing: 6) {
                         Icon("bell.slash", 25).foregroundStyle(Theme.muted)
-                        Text("You’re all caught up").font(.system(size: 13, weight: .medium))
-                        Text("Rattle will tell you here when something needs attention.").font(.system(size: 12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
+                        Text("You’re all caught up").font(Theme.sans(13, .medium))
+                        Text("Rattle will tell you here when something needs attention.").font(Theme.sans(12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
                     }.padding(18).frame(width: 240)
                 }
             Button { router.openSettings(.general) } label: { ChromeIcon(name: "person.crop.circle") }
@@ -117,7 +116,7 @@ struct HubView: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Icon(icon, 20).frame(width: 20, height: 20)
-                if !collapsed { Text(title).font(.system(size: 15, weight: .medium)); Spacer() }
+                if !collapsed { Text(title).font(Theme.sans(15, .medium)); Spacer() }
             }
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
@@ -145,16 +144,22 @@ struct ChromeIcon: View {
 struct SetupChecklist: View {
     @LocalState private var mic = Permissions.micGranted
     @LocalState private var ax = Permissions.accessibilityGranted
-    @LocalState private var model = (WhisperModel.all.first { $0.id == AppStore.shared.settings.model }?.installed ?? false)
-    @LocalState private var engine = Transcriber.enginePath != nil
+    @LocalState private var model = SetupChecklist.modelReady
+    @LocalState private var engine = SetupChecklist.engineReady
     private let t = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    private static var modelReady: Bool {
+        let s = AppStore.shared.settings
+        return s.cloudSpeechReady || (WhisperModel.all.first { $0.id == s.model }?.installed ?? false)
+    }
+    private static var engineReady: Bool { AppStore.shared.settings.cloudSpeechReady || Transcriber.enginePath != nil }
 
     var done: Int { [mic, ax, model, engine].filter { $0 }.count }
 
     var body: some View {
         if done < 4 {
             VStack(alignment: .leading, spacing: 9) {
-                Text("Set up Rattle").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.ink)
+                Text("Set up Rattle").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.ink)
                 ProgressView(value: Double(done), total: 4).tint(Theme.teal1)
                 row("Microphone access", mic) { Permissions.requestMic { _ in mic = Permissions.micGranted } }
                 row("Accessibility (hotkey + paste)", ax) { Permissions.requestAccessibility(); Permissions.openPrivacy("Privacy_Accessibility") }
@@ -162,12 +167,12 @@ struct SetupChecklist: View {
                 row("Speech model", model) { if let m = WhisperModel.all.first(where: { $0.id == AppStore.shared.settings.model }) { Task { @MainActor in ModelDownloader.shared.download(m) } } }
             }
             .padding(14)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
             .onReceive(t) { _ in
                 mic = Permissions.micGranted; ax = Permissions.accessibilityGranted
-                engine = Transcriber.enginePath != nil
-                model = WhisperModel.all.first { $0.id == AppStore.shared.settings.model }?.installed ?? false
+                engine = Self.engineReady
+                model = Self.modelReady
                 if ax { DictationController.shared.retryHotkey() }
             }
         }
@@ -177,7 +182,7 @@ struct SetupChecklist: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Icon(ok ? "checkmark.circle.fill" : "circle", 19).foregroundStyle(ok ? Theme.teal3 : Theme.muted)
-                Text(title).font(.system(size: 12)).strikethrough(ok).foregroundStyle(ok ? Theme.muted : Theme.ink)
+                Text(title).font(Theme.sans(12)).strikethrough(ok).foregroundStyle(ok ? Theme.muted : Theme.ink)
                 Spacer()
             }
         }.buttonStyle(.plain).pointer().disabled(ok)
@@ -191,7 +196,7 @@ struct DictationPage: View {
     @ObservedObject var dictation = DictationController.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: 24) {
             PageHeader(title: "Welcome back, \(store.settings.userName)", subtitle: nil) {
                 HStack(spacing: 18) {
                     stat("flame", "\(store.streak) day\(store.streak == 1 ? "" : "s")")
@@ -202,31 +207,32 @@ struct DictationPage: View {
             Card {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Hold \(store.settings.shortcut.title) and speak").font(.system(size: 15, weight: .semibold))
-                        Text("Press space while holding for hands-free. Esc cancels.").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        Text("Hold \(store.settings.shortcut.title) and speak").font(Theme.sans(15, .semibold))
+                        Text("Press space while holding for hands-free. Esc cancels.").font(Theme.sans(13)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
                     PillButton(title: dictation.isRecording ? "Stop" : "Try it", prominent: true) { dictation.toggleFromUI() }
                 }.padding(.horizontal, 26).padding(.vertical, 24)
             }
-            if let e = dictation.lastError { Text(e).font(.system(size: 12)).foregroundStyle(.red.opacity(0.8)) }
+            if let e = dictation.lastError { Text(e).font(Theme.sans(12)).foregroundStyle(.red.opacity(0.8)) }
 
             if store.history.isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
                     Text("No dictations yet").font(Theme.serif(22))
-                    Text("Click into any text field, hold \(store.settings.shortcut.title), and talk.").foregroundStyle(Theme.muted).font(.system(size: 14))
+                    Text("Click into any text field, hold \(store.settings.shortcut.title), and talk.").foregroundStyle(Theme.muted).font(Theme.sans(14))
                 }.frame(maxWidth: .infinity)
                 Spacer()
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
                         ForEach(grouped, id: \.0) { (day, items) in
-                            Text(day).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted).padding(.top, 18).padding(.bottom, 10)
+                            Text(day).font(Theme.sans(12, .semibold)).tracking(0.9).foregroundStyle(Theme.muted).padding(.top, 16).padding(.bottom, 8)
                             VStack(spacing: 0) {
                                 ForEach(items) { HistoryRow(item: $0) }
                             }
-                            .background(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
                         }
                     }
                 }
@@ -246,7 +252,7 @@ struct DictationPage: View {
     }
 
     private func stat(_ icon: String, _ text: String) -> some View {
-        HStack(spacing: 6) { Icon(icon, 15); Text(text).font(.system(size: 13, weight: .medium)) }.foregroundStyle(Theme.muted)
+        HStack(spacing: 6) { Icon(icon, 15); Text(text).font(Theme.sans(13, .medium)) }.foregroundStyle(Theme.muted)
     }
 }
 
@@ -255,10 +261,10 @@ struct HistoryRow: View {
     @LocalState private var hover = false
     @LocalState private var copied = false
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
-            Text(item.date, style: .time).font(.system(size: 12.5)).foregroundStyle(Theme.muted).frame(width: 84, alignment: .leading)
-            Text(item.text).font(.system(size: 14.5)).lineSpacing(3).foregroundStyle(Theme.ink).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-            HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 32) {
+            Text(item.date, style: .time).font(Theme.sans(13)).foregroundStyle(Theme.muted).frame(width: 66, alignment: .leading)
+            Text(item.text).font(Theme.sans(15)).lineSpacing(2).foregroundStyle(Theme.ink).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+            HStack(spacing: 6) {
                 Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.text, forType: .string); copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false } } label: {
                     Icon(copied ? "checkmark" : "doc.on.doc", 16)
@@ -266,8 +272,8 @@ struct HistoryRow: View {
                 Button { AppStore.shared.history.removeAll { $0.id == item.id } } label: { Icon("trash", 16) }
             }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).opacity(hover ? 1 : 0)
         }
-        .padding(.horizontal, 22).padding(.vertical, 18)
-        .background(hover ? Theme.card.opacity(0.6) : .clear)
+        .padding(16)
+        .background(hover ? Theme.card : .clear)
         .onHover { hover = $0 }
         .overlay(alignment: .bottom) { Divider().overlay(Theme.line) }
     }
@@ -287,11 +293,11 @@ struct DictionaryPage: View {
                 ScrollView { HeroCard {
                     VStack(alignment: .leading, spacing: 14) {
                         HeroHeadline(before: "Words Rattle should ", italic: "never", after: " get wrong.")
-                        Text("Add names, jargon and product terms. Give a word a replacement to rewrite what's heard.").font(.system(size: 17)).foregroundStyle(.white.opacity(0.9)).padding(.bottom, 6)
+                        Text("Add names, jargon and product terms. Give a word a replacement to rewrite what's heard.").font(Theme.sans(17)).foregroundStyle(.white.opacity(0.9)).padding(.bottom, 6)
                         HStack(spacing: 14) { ExamplePill(text: "“tech up labs”", cue: true); Icon("arrow.right", 16).foregroundStyle(.white.opacity(0.8)); ExamplePill(text: "TechUp Labs") }
                         HStack(spacing: 14) { ExamplePill(text: "“kubernetes”", cue: true); Icon("arrow.right", 16).foregroundStyle(.white.opacity(0.8)); ExamplePill(text: "Kubernetes") }
                         Button { adding = true } label: {
-                            Text("Add a word").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.ink).padding(.horizontal, 20).frame(height: 48)
+                            Text("Add a word").font(Theme.sans(16, .medium)).foregroundStyle(Theme.heroInk).padding(.horizontal, 20).frame(height: 48)
                                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.95)))
                         }.buttonStyle(.plain).pointer().padding(.top, 14)
                     }
@@ -301,8 +307,8 @@ struct DictionaryPage: View {
                     VStack(spacing: 0) {
                         ForEach(store.dictionary) { e in
                             HStack {
-                                Text(e.word).font(.system(size: 14, weight: .medium))
-                                if let r = e.replacement, !r.isEmpty { Icon("arrow.right", 14).foregroundStyle(Theme.muted); Text(r).font(.system(size: 14)) }
+                                Text(e.word).font(Theme.sans(14, .medium))
+                                if let r = e.replacement, !r.isEmpty { Icon("arrow.right", 14).foregroundStyle(Theme.muted); Text(r).font(Theme.sans(14)) }
                                 Spacer()
                                 Button { store.dictionary.removeAll { $0.id == e.id } } label: { Icon("trash", 16) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
                             }.padding(.horizontal, 22).padding(.vertical, 17).overlay(alignment: .bottom) { Divider().overlay(Theme.line) }
@@ -331,7 +337,7 @@ struct EntrySheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(Theme.serif(24))
             TextField(f1, text: $v1).textFieldStyle(.roundedBorder)
-            if multiline { TextEditor(text: $v2).font(.system(size: 13)).frame(height: 110).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line)) }
+            if multiline { TextEditor(text: $v2).font(Theme.sans(13)).frame(height: 110).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line)) }
             else { TextField(f2, text: $v2).textFieldStyle(.roundedBorder) }
             HStack { Spacer(); PillButton(title: "Cancel", action: cancel); PillButton(title: "Save", prominent: true, action: save) }
         }.padding(24).frame(width: 420)
@@ -343,6 +349,7 @@ struct StylePage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
             PageHeader(title: "Style", subtitle: "Choose how Rattle formats your dictations in different apps.") { EmptyView() }
+            ScrollView { VStack(spacing: 28) {
             Card {
                 ForEach(Array(StyleCategory.allCases.enumerated()), id: \.element) { i, c in
                     SettingRow(title: c.title, detail: c.apps, last: i == StyleCategory.allCases.count - 1) {
@@ -356,21 +363,7 @@ struct StylePage: View {
                     Dropdown(selection: $store.settings.cleanup, options: CleanupLevel.allCases.map { ($0, $0.title) }, width: 160)
                 }
             }
-            Spacer()
-        }
-    }
-}
-
-struct ScratchpadPage: View {
-    @ObservedObject var store = AppStore.shared
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            PageHeader(title: "Scratchpad", subtitle: "Click here and dictate. Anything you say lands in this note.") {
-                PillButton(title: "Copy all") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(store.scratchpad, forType: .string) }
-            }
-            TextEditor(text: $store.scratchpad)
-                .font(.system(size: 15)).scrollContentBackground(.hidden).padding(14)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+            } }
         }
     }
 }

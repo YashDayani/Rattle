@@ -28,22 +28,22 @@ struct TransformsPage: View {
                             Dropdown(selection: Binding(get: { store.settings.commandShortcut }, set: { store.settings.commandShortcut = $0; DictationController.shared.applyShortcut() }),
                                      options: Shortcut.allCases.map { ($0, $0.title) }, width: 140)
                             Toggle("", isOn: Binding(get: { store.settings.commandModeEnabled }, set: { store.settings.commandModeEnabled = $0; DictationController.shared.applyShortcut() }))
-                                .toggleStyle(.switch).labelsHidden()
+                                .toggleStyle(ThemeSwitchStyle()).labelsHidden()
                         }
                     }
                 }
 
-                Text("Your Transforms").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.muted)
+                Text("Your Transforms").font(Theme.sans(13, .semibold)).foregroundStyle(Theme.muted)
                 VStack(spacing: 0) {
                     ForEach(store.allTransforms) { t in
                         HStack(alignment: .top, spacing: 14) {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 8) {
-                                    Text(t.name).font(.system(size: 14, weight: .semibold))
-                                    if t.builtIn { Text("Built-in").font(.system(size: 10.5, weight: .medium)).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.button)) }
-                                    if store.settings.autoTransformID == t.id { Text("Auto").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.ink)) }
+                                    Text(t.name).font(Theme.sans(14, .semibold))
+                                    if t.builtIn { Text("Built-in").font(Theme.sans(10.5, .medium)).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.button)) }
+                                    if store.settings.autoTransformID == t.id { Text("Auto").font(Theme.sans(10.5, .semibold)).foregroundStyle(Theme.onInk).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.ink)) }
                                 }
-                                Text(t.prompt).font(.system(size: 12.5)).foregroundStyle(Theme.muted).lineLimit(2)
+                                Text(t.prompt).font(Theme.sans(12.5)).foregroundStyle(Theme.muted).lineLimit(2)
                             }
                             Spacer()
                             if !t.builtIn {
@@ -55,22 +55,22 @@ struct TransformsPage: View {
                     }
                 }.background(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
 
-                Text("Try it").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.muted).padding(.top, 6)
+                Text("Try it").font(Theme.sans(13, .semibold)).foregroundStyle(Theme.muted).padding(.top, 6)
                 Card {
                     VStack(alignment: .leading, spacing: 12) {
-                        TextEditor(text: $testInput).font(.system(size: 14)).scrollContentBackground(.hidden).frame(height: 90).padding(8)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
-                            .overlay(alignment: .topLeading) { if testInput.isEmpty { Text("Paste or type some text…").font(.system(size: 14)).foregroundStyle(Theme.muted).padding(14).allowsHitTesting(false) } }
+                        TextEditor(text: $testInput).font(Theme.sans(14)).scrollContentBackground(.hidden).frame(height: 90).padding(8)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel))
+                            .overlay(alignment: .topLeading) { if testInput.isEmpty { Text("Paste or type some text…").font(Theme.sans(14)).foregroundStyle(Theme.muted).padding(14).allowsHitTesting(false) } }
                         HStack {
                             Dropdown(selection: $testID, options: store.allTransforms.map { ($0.id, $0.name) }, width: 200)
                             PillButton(title: running ? "Working…" : "Run", prominent: true) { run() }.disabled(running || testInput.isEmpty)
                             Spacer()
                         }
-                        if let e = error { Text(e).font(.system(size: 12.5)).foregroundStyle(.red.opacity(0.85)) }
+                        if let e = error { Text(e).font(Theme.sans(12.5)).foregroundStyle(.red.opacity(0.85)) }
                         if !testOutput.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(testOutput).font(.system(size: 14)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12).background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                                Text(testOutput).font(Theme.sans(14)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12).background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel))
                                 PillButton(title: "Copy polished text") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(testOutput, forType: .string) }
                             }
                         }
@@ -97,7 +97,7 @@ struct TransformsPage: View {
     private var aiStatus: some View {
         HStack(spacing: 10) {
             Circle().fill(status == "ok" ? Color.green : (status == nil ? Color.gray : Color.orange)).frame(width: 8, height: 8)
-            Text(status == "ok" ? "AI model connected" : (status ?? "Checking AI server…")).font(.system(size: 13)).foregroundStyle(Theme.ink)
+            Text(status == "ok" ? "AI model connected" : (status ?? "Checking AI server…")).font(Theme.sans(13)).foregroundStyle(Theme.ink)
             Spacer()
             PillButton(title: "AI settings") { Router.shared.openSettings(.ai) }
         }.padding(.horizontal, 16).frame(height: 46).background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
@@ -139,9 +139,9 @@ struct TransformSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(isNew ? "New transform" : "Edit transform").font(Theme.serif(24))
             TextField("Name (e.g. Slack reply)", text: $name).textFieldStyle(.roundedBorder)
-            Text("Instruction").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
-            TextEditor(text: $prompt).font(.system(size: 13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
-            Text("Describe how the text should change. Rattle sends your text plus this instruction to your AI model.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Text("Instruction").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
+            TextEditor(text: $prompt).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
+            Text("Describe how the text should change. Rattle sends your text plus this instruction to your AI model.").font(Theme.sans(12)).foregroundStyle(Theme.muted)
             HStack { Spacer(); PillButton(title: "Cancel", action: cancel)
                 PillButton(title: "Save", prominent: true) { save(Transform(id: id, name: name, prompt: prompt)) }.disabled(name.isEmpty || prompt.isEmpty) }
         }.padding(24).frame(width: 460)

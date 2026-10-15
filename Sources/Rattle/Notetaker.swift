@@ -133,6 +133,87 @@ final class SystemAudioTap {
     }
 }
 
+/// Writes the meeting's mic + call audio, mixed to one track, to an AAC file as it's recorded.
+final class MeetingAudioWriter {
+    private var file: AVAudioFile?
+    private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+
+    init?(url: URL) {
+        let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16000, AVNumberOfChannelsKey: 1]
+        guard let f = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false) else { return nil }
+        file = f
+    }
+
+    func append(mic: [Float], system: [Float]) {
+        let n = max(mic.count, system.count)
+        guard n > 0, let file, let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n)), let ch = buf.floatChannelData?[0] else { return }
+        for i in 0..<n { ch[i] = max(-1, min(1, (i < mic.count ? mic[i] : 0) + (i < system.count ? system[i] : 0))) }
+        buf.frameLength = AVAudioFrameCount(n)
+        try? file.write(from: buf)
+    }
+
+    /// AVAudioFile finalizes the file when released.
+    func close() { file = nil }
+}
+
+/// Plays back a saved meeting recording.
+@MainActor
+final class MeetingPlayer: ObservableObject {
+    static let shared = MeetingPlayer()
+    @Published private(set) var meetingID: UUID?
+    @Published private(set) var playing = false
+    @Published private(set) var time: TimeInterval = 0
+    @Published private(set) var duration: TimeInterval = 0
+    private var player: AVAudioPlayer?
+    private var ticker: Timer?
+
+    func toggle(_ m: Meeting) {
+        if meetingID == m.id, let player {
+            if player.isPlaying { pause() } else { resume() }
+        } else { play(m, from: 0) }
+    }
+
+    func play(_ m: Meeting, from t: TimeInterval) {
+        if meetingID != m.id {
+            stop()
+            guard let url = m.audioURL, let p = try? AVAudioPlayer(contentsOf: url) else { return }
+            p.prepareToPlay()
+            player = p; meetingID = m.id; duration = p.duration
+        }
+        seek(to: t)
+        resume()
+    }
+
+    func seek(to t: TimeInterval) {
+        guard let player else { return }
+        player.currentTime = max(0, min(t, player.duration))
+        time = player.currentTime
+    }
+
+    func stop() {
+        pause()
+        player = nil; meetingID = nil; time = 0; duration = 0
+    }
+
+    private func resume() {
+        guard let player else { return }
+        player.play(); playing = true
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let p = self.player else { return }
+                self.time = p.currentTime
+                if !p.isPlaying { self.playing = false; self.ticker?.invalidate() }
+            }
+        }
+    }
+
+    private func pause() {
+        player?.pause(); playing = false
+        ticker?.invalidate(); ticker = nil
+    }
+}
+
 @MainActor
 final class NotetakerController: ObservableObject {
     static let shared = NotetakerController()
@@ -149,6 +230,8 @@ final class NotetakerController: ObservableObject {
 
     private let mic = AudioRecorder()
     private let tap = SystemAudioTap()
+    private var recording: MeetingAudioWriter?
+    private var meetingID = UUID()
     private var startedAt = Date()
     private var lastFlushOffset: TimeInterval = 0
     private var ticker: Timer?
@@ -169,7 +252,7 @@ final class NotetakerController: ObservableObject {
         guard state == .idle else { return }
         guard Permissions.micGranted else {
             Permissions.requestMic { _ in }
-            warning = "Allow microphone access, then start Notetaker again."
+            warning = "Allow microphone access, then start the meeting again."
             return
         }
         warning = nil; answer = nil
@@ -180,6 +263,8 @@ final class NotetakerController: ObservableObject {
             do { try tap.start(); usingSystemAudio = true }
             catch { warning = "Recording your microphone only. \(error.localizedDescription)" }
         }
+        meetingID = UUID()
+        recording = store.settings.notetakerSaveAudio ? MeetingAudioWriter(url: AppStore.recordingsDir.appendingPathComponent("\(meetingID.uuidString).m4a")) : nil
         startedAt = Date()
         state = .recording
         ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -193,6 +278,7 @@ final class NotetakerController: ObservableObject {
     private func enqueueFlush() {
         let m = mic.drain()
         let s = usingSystemAudio ? tap.drain() : []
+        recording?.append(mic: m, system: s)
         let offset = lastFlushOffset
         lastFlushOffset = Date().timeIntervalSince(startedAt)
         let previous = chain
@@ -207,8 +293,8 @@ final class NotetakerController: ObservableObject {
             guard samples.count > 16000, Self.rms(samples) > 0.004 else { continue }
             let settings = store.settings
             let model = WhisperModel.all.first { $0.id == settings.model } ?? WhisperModel.all[0]
-            guard let raw = try? await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: store.dictionary.map { $0.replacement ?? $0.word }) else {
-                warning = "Transcription failed. Check the speech model in Settings → Model."
+            guard let raw = try? await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: store.dictionary.map { $0.replacement ?? $0.word }, cloud: settings.cloudSpeech) else {
+                warning = settings.speechEngine == .cloud ? "Transcription failed. Check your Groq key and connection in Settings → Model." : "Transcription failed. Check the speech model in Settings → Model."
                 continue
             }
             let text = Self.clean(raw)
@@ -225,19 +311,48 @@ final class NotetakerController: ObservableObject {
         let m = mic.stop()
         let s = usingSystemAudio ? tap.drain() : []
         tap.stop()
+        recording?.append(mic: m, system: s)
+        recording?.close()
+        let audioFile = recording == nil ? nil : "\(meetingID.uuidString).m4a"
+        recording = nil
         let offset = lastFlushOffset
         let previous = chain
         await previous?.value
         await transcribe(mic: m, system: s, offset: offset)
 
-        var meeting = Meeting(title: Self.defaultTitle(startedAt), date: startedAt, duration: duration, lines: liveLines, capturedSystemAudio: usingSystemAudio)
+        var meeting = Meeting(id: meetingID, title: Self.defaultTitle(startedAt), date: startedAt, duration: duration, lines: liveLines, capturedSystemAudio: usingSystemAudio, audioFile: audioFile)
         liveLines = []
         state = .idle
-        guard !meeting.lines.isEmpty else { warning = "No speech was picked up, so nothing was saved."; return }
+        guard !meeting.lines.isEmpty else {
+            if let a = audioFile { try? FileManager.default.removeItem(at: AppStore.recordingsDir.appendingPathComponent(a)) }
+            warning = "No speech was picked up, so nothing was saved."; return
+        }
         store.meetings.insert(meeting, at: 0)
         selectedID = meeting.id
         if store.settings.notetakerSummaries { await summarize(meeting.id) }
         meeting = store.meetings.first { $0.id == meeting.id } ?? meeting
+    }
+
+    func delete(_ id: UUID) {
+        if MeetingPlayer.shared.meetingID == id { MeetingPlayer.shared.stop() }
+        if let url = store.meetings.first(where: { $0.id == id })?.audioURL { try? FileManager.default.removeItem(at: url) }
+        store.meetings.removeAll { $0.id == id }
+        if selectedID == id { selectedID = nil }
+    }
+
+    /// Copies the meeting's recording into ~/Downloads, named after the meeting. Returns the new file.
+    @discardableResult
+    func downloadAudio(_ m: Meeting) -> URL? {
+        guard let src = m.audioURL else { return nil }
+        let fm = FileManager.default
+        let downloads = fm.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        var base = m.title.replacingOccurrences(of: #"[/:\\]"#, with: "-", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        if base.isEmpty { base = "Meeting" }
+        var dest = downloads.appendingPathComponent("\(base).m4a")
+        var n = 2
+        while fm.fileExists(atPath: dest.path) { dest = downloads.appendingPathComponent("\(base) \(n).m4a"); n += 1 }
+        do { try fm.copyItem(at: src, to: dest); return dest }
+        catch { warning = "Couldn't save the recording to Downloads. \(error.localizedDescription)"; return nil }
     }
 
     func summarize(_ id: UUID) async {

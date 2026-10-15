@@ -3,15 +3,15 @@ import SwiftUI
 // MARK: - Shared bits
 
 extension Theme {
-    static let teal1 = Color(red: 0.106, green: 0.369, blue: 0.353)   // darkest
-    static let teal2 = Color(red: 0.180, green: 0.612, blue: 0.576)
-    static let teal3 = Color(red: 0.557, green: 0.820, blue: 0.784)
-    static let teal4 = Color(red: 0.812, green: 0.929, blue: 0.910)
-    static let tan = Color(red: 0.788, green: 0.761, blue: 0.706)
+    static let teal1 = dyn(0x1b5e5a, 0x84cdc1)   // strongest: darkest in light mode, brightest in dark
+    static let teal2 = dyn(0x2e9c93, 0x4daa9d)
+    static let teal3 = dyn(0x8ed1c8, 0x247872)
+    static let teal4 = dyn(0xcfede8, 0x1a5c5c)
+    static let tan = dyn(0xc9c2b4, 0x464544)
     static let purple = Color(red: 0.573, green: 0.396, blue: 0.769)
-    static let page = Color(red: 0.988, green: 0.988, blue: 0.984)
-    static func title(_ size: CGFloat = 28) -> Font { .system(size: size, weight: .semibold) }
-    static func caps(_ size: CGFloat = 12) -> Font { .system(size: size, weight: .medium).monospaced() }
+    static let page = dyn(0xfcfcfb, 0x1a1a1a)
+    static func title(_ size: CGFloat = 24) -> Font { Theme.sans(size, .semibold) }
+    static func caps(_ size: CGFloat = 12) -> Font { Theme.sans(size, .medium).monospaced() }
 }
 
 struct TabBar: View {
@@ -22,7 +22,7 @@ struct TabBar: View {
         HStack(spacing: 30) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, t in
                 Button { selection = i } label: {
-                    Text(t).font(.system(size: 15, weight: selection == i ? .semibold : .regular))
+                    Text(t).font(Theme.sans(15, selection == i ? .semibold : .regular))
                         .foregroundStyle(selection == i ? Theme.ink : Theme.muted)
                         .padding(.bottom, 12)
                         .overlay(alignment: .bottom) { if selection == i { Rectangle().fill(Theme.ink).frame(height: 2) } }
@@ -128,13 +128,13 @@ struct UsageTab: View {
     private var wpmCard: some View {
         TileCard {
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(store.averageWPM)").font(.system(size: 36, weight: .medium))
+                Text("\(store.averageWPM)").font(Theme.sans(36, .medium))
                 label("WORDS PER MINUTE")
                 ZStack {
                     GaugeArc(progress: min(1, Double(store.averageWPM) / 220)).frame(width: 200, height: 150)
                     VStack(spacing: 2) {
-                        Text(store.averageWPM == 0 ? "Say something" : "Typing is ~40").font(.system(size: 11.5)).foregroundStyle(Theme.muted)
-                        Text(store.averageWPM == 0 ? "—" : String(format: "%.1f× faster", Double(store.averageWPM) / 40)).font(.system(size: 15, weight: .medium))
+                        Text(store.averageWPM == 0 ? "Say something" : "Typing is ~40").font(Theme.sans(11.5)).foregroundStyle(Theme.muted)
+                        Text(store.averageWPM == 0 ? "—" : String(format: "%.1f× faster", Double(store.averageWPM) / 40)).font(Theme.sans(15, .medium))
                     }.offset(y: 6)
                 }.frame(maxWidth: .infinity).padding(.top, 8)
             }.padding(26)
@@ -144,7 +144,7 @@ struct UsageTab: View {
     private var fixesCard: some View {
         TileCard {
             VStack(alignment: .leading, spacing: 4) {
-                Text(fmt(store.totalCorrected + store.totalDictFixes)).font(.system(size: 36, weight: .medium))
+                Text(fmt(store.totalCorrected + store.totalDictFixes)).font(Theme.sans(36, .medium))
                 label("FIXES MADE BY RATTLE")
                 Divider().overlay(Theme.line).padding(.vertical, 14)
                 row("\(fmt(store.totalCorrected)) words corrected")
@@ -154,25 +154,25 @@ struct UsageTab: View {
         }
     }
 
-    private func row(_ t: String) -> some View { Text(t).font(.system(size: 14.5)).padding(.vertical, 3) }
+    private func row(_ t: String) -> some View { Text(t).font(Theme.sans(14.5)).padding(.vertical, 3) }
 
     private var totalCard: some View {
         let (thisMonth, lastMonth) = monthWords()
         return TileCard {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top) {
-                    Text(fmt(store.totalWords)).font(.system(size: 36, weight: .medium))
+                    Text(fmt(store.totalWords)).font(Theme.sans(36, .medium))
                     Spacer()
                     if lastMonth > 0 {
                         let pct = Int((Double(thisMonth - lastMonth) / Double(lastMonth) * 100).rounded())
                         Label { Text("\(abs(pct))% this month") } icon: { Icon(pct >= 0 ? "arrow.up.right" : "arrow.down.right", 14) }
-                            .font(.system(size: 11.5)).padding(.horizontal, 10).padding(.vertical, 5).background(Capsule().fill(Color.white))
+                            .font(Theme.sans(11.5)).padding(.horizontal, 10).padding(.vertical, 5).background(Capsule().fill(Theme.panel))
                     }
                 }
                 label("TOTAL WORDS DICTATED")
                 Divider().overlay(Theme.line).padding(.vertical, 14)
-                HStack(spacing: 8) { Icon("desktopcomputer", 18); Text("Desktop").font(.system(size: 14.5)) }
-                Text("\(fmt(store.totalWords)) words").font(.system(size: 14.5))
+                HStack(spacing: 8) { Icon("desktopcomputer", 18); Text("Desktop").font(Theme.sans(14.5)) }
+                Text("\(fmt(store.totalWords)) words").font(Theme.sans(14.5))
                 Spacer(minLength: 0)
             }.padding(26).frame(maxHeight: .infinity, alignment: .topLeading)
         }
@@ -186,7 +186,7 @@ struct UsageTab: View {
         return TileCard {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Desktop usage").font(.system(size: 24, weight: .medium)).lineLimit(1).fixedSize()
+                    Text("Desktop usage").font(Theme.sans(24, .medium)).lineLimit(1).fixedSize()
                     Spacer()
                     Text("TOTAL APPS USED | \(apps)").font(Theme.caps(10.5)).tracking(0.6).lineLimit(1)
                 }
@@ -197,7 +197,7 @@ struct UsageTab: View {
                             Icon(cat.icon, 19).frame(width: 24)
                             GeometryReader { geo in
                                 let w = max(46, geo.size.width * 0.62 * CGFloat(pct))
-                                Text("\(Int((pct * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                                Text("\(Int((pct * 100).rounded()))%").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.page)
                                     .frame(width: w, height: 32).background(RoundedRectangle(cornerRadius: 4).fill(pct > 0.5 ? Theme.teal1 : (pct > 0.05 ? Theme.teal2 : Theme.teal3)))
                             }.frame(height: 32)
                             Text("\(n) \(cat.rawValue.uppercased())").font(Theme.caps(12)).tracking(0.8).frame(maxWidth: 170, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
@@ -212,15 +212,15 @@ struct UsageTab: View {
         TileCard {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(store.streak) day streak").font(.system(size: 24, weight: .medium)).lineLimit(1).fixedSize()
+                    Text("\(store.streak) day streak").font(Theme.sans(24, .medium)).lineLimit(1).fixedSize()
                     Spacer()
                     Text("LONGEST STREAK | \(store.longestStreak) DAY\(store.longestStreak == 1 ? "" : "S")").font(Theme.caps(10.5)).tracking(0.6).lineLimit(1)
                 }
                 Heatmap(history: store.history)
                 HStack(spacing: 6) {
-                    Text("More").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text("More").font(Theme.sans(12)).foregroundStyle(Theme.muted)
                     ForEach([Theme.teal1, Theme.teal2, Theme.teal3, Theme.teal4], id: \.self) { RoundedRectangle(cornerRadius: 3).fill($0).frame(width: 16, height: 16) }
-                    Text("Less").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Text("Less").font(Theme.sans(12)).foregroundStyle(Theme.muted)
                 }
             }.padding(28)
         }
@@ -261,7 +261,7 @@ struct ArcShape: Shape {
 struct Heatmap: View {
     let history: [HistoryItem]
     private let weeks = 20
-    private let cell: CGFloat = 14, gap: CGFloat = 4
+    private let cell: CGFloat = 16, gap: CGFloat = 8
 
     var body: some View {
         let cal = Calendar.current
@@ -275,14 +275,14 @@ struct Heatmap: View {
         return HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .trailing, spacing: gap) {
                 Color.clear.frame(height: 16)
-                ForEach(0..<7, id: \.self) { Text(days[$0]).font(.system(size: 11)).foregroundStyle(Theme.muted).fixedSize().frame(height: cell) }
+                ForEach(0..<7, id: \.self) { Text(days[$0]).font(Theme.sans(10)).foregroundStyle(Theme.muted).fixedSize().frame(height: cell) }
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: gap) {
                     ForEach(0..<weeks, id: \.self) { w in
                         let d = cal.date(byAdding: .day, value: w * 7, to: start)!
                         let first = cal.component(.day, from: d) <= 7
-                        Text(first ? d.formatted(.dateTime.month(.abbreviated)) : "").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        Text(first ? d.formatted(.dateTime.month(.abbreviated)) : "").font(Theme.sans(10)).foregroundStyle(Theme.muted)
                             .fixedSize().frame(width: cell, alignment: .leading)
                     }
                 }.frame(height: 14)
@@ -291,7 +291,7 @@ struct Heatmap: View {
                         VStack(spacing: gap) {
                             ForEach(0..<7, id: \.self) { r in
                                 let d = cal.date(byAdding: .day, value: w * 7 + r, to: start)!
-                                RoundedRectangle(cornerRadius: 3).fill(color(d, today, words, peak)).frame(width: cell, height: cell)
+                                RoundedRectangle(cornerRadius: 2).fill(color(d, today, words, peak)).frame(width: cell, height: cell)
                             }
                         }
                     }
@@ -301,7 +301,7 @@ struct Heatmap: View {
     }
 
     private func color(_ d: Date, _ today: Date, _ words: [Date: Int], _ peak: Int) -> Color {
-        if d > today { return Color.black.opacity(0.04) }
+        if d > today { return Theme.ink.opacity(0.05) }
         guard let n = words[d], n > 0 else { return Theme.tan.opacity(0.75) }
         let f = Double(n) / Double(peak)
         return f > 0.66 ? Theme.teal1 : f > 0.33 ? Theme.teal2 : f > 0.12 ? Theme.teal3 : Theme.teal4
@@ -330,9 +330,9 @@ struct VoiceTab: View {
                     }
                 }.frame(height: 10)
                 HStack {
-                    Text(store.history.last.map { "Created \($0.date.formatted(.dateTime.day().month(.abbreviated).year()))" } ?? "Not created yet").font(.system(size: 13))
+                    Text(store.history.last.map { "Created \($0.date.formatted(.dateTime.day().month(.abbreviated).year()))" } ?? "Not created yet").font(Theme.sans(13))
                     Spacer()
-                    Text("Next update in \(remaining.formatted()) more words").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    Text("Next update in \(remaining.formatted()) more words").font(Theme.sans(13)).foregroundStyle(Theme.muted)
                 }
             }.padding(.top, 14)
 
@@ -341,10 +341,10 @@ struct VoiceTab: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(archetype.0).font(Theme.serif(30))
                         Text("VOICE PROFILE").font(Theme.caps(11.5)).tracking(1).foregroundStyle(Theme.muted)
-                        Text(aiBlurb ?? archetype.1).font(.system(size: 16)).lineSpacing(5).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                        Text(aiBlurb ?? archetype.1).font(Theme.sans(16)).lineSpacing(5).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                         if store.history.count >= 3 {
                             Button { refine() } label: {
-                                Label { Text(busy ? "Writing…" : "Refine with AI") } icon: { Icon("sparkles", 14) }.font(.system(size: 12.5, weight: .medium))
+                                Label { Text(busy ? "Writing…" : "Refine with AI") } icon: { Icon("sparkles", 14) }.font(Theme.sans(12.5, .medium))
                             }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).padding(.top, 4).disabled(busy)
                         }
                     }
@@ -368,7 +368,7 @@ struct VoiceTab: View {
                             .overlay(Icon("sun.max.fill", 30).foregroundStyle(.white))
                         Text(stats.peak).font(Theme.serif(28)).padding(.top, 8)
                         Text("YOUR PEAK TIME & PLACE").font(Theme.caps(11.5)).tracking(1)
-                        Text(stats.peakText).font(.system(size: 16)).lineSpacing(5).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                        Text(stats.peakText).font(Theme.sans(16)).lineSpacing(5).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                         Spacer(minLength: 0)
                     }.padding(26).frame(maxHeight: .infinity, alignment: .topLeading)
                 }

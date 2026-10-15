@@ -26,12 +26,32 @@ struct Note: Codable, Identifiable, Equatable {
     var created = Date()
     var updated = Date()
     var pinned = false
+    /// Optional explicit title. Empty falls back to the first line of the text.
+    var customTitle: String? = nil
+    var folderID: UUID? = nil
 
     private var lines: [Substring] { text.split(separator: "\n", omittingEmptySubsequences: true).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
     /// The first non-empty line.
-    var title: String { lines.first.map { $0.trimmingCharacters(in: .whitespaces) } ?? "New note" }
-    /// Everything after the title line.
-    var preview: String { lines.dropFirst().map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n") }
+    var title: String {
+        if let t = customTitle?.trimmingCharacters(in: .whitespaces), !t.isEmpty { return t }
+        return lines.first.map { Note.plain($0.trimmingCharacters(in: .whitespaces)) } ?? "New note"
+    }
+    /// Body shown on cards: everything after the first-line title (or all of it when there is a custom title), Markdown markers stripped.
+    var preview: String {
+        let hasTitle = !(customTitle?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+        return (hasTitle ? lines[...] : lines.dropFirst()).map { Note.plain($0.trimmingCharacters(in: .whitespaces)) }.joined(separator: "\n")
+    }
+    /// Strips leading Markdown markers (#, >, -, *, 1.) and inline emphasis for display.
+    static func plain(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: #"^(#{1,6}\s+|>\s+|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)"#, with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(\*\*|__|`|\*)"#, with: "", options: .regularExpression)
+        return t
+    }
+    /// True when pasted text looks like Markdown worth rendering.
+    static func looksLikeMarkdown(_ s: String) -> Bool {
+        s.range(of: #"(?m)^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\|.*\|)"#, options: .regularExpression) != nil
+            || s.contains("**") || s.range(of: #"\[[^\]]+\]\([^)]+\)"#, options: .regularExpression) != nil
+    }
     var words: Int { text.split { $0 == " " || $0.isNewline }.count }
     /// Time for today, "Yesterday", otherwise the date.
     var updatedLabel: String {
@@ -40,6 +60,12 @@ struct Note: Codable, Identifiable, Equatable {
         if cal.isDateInYesterday(updated) { return "Yesterday" }
         return updated.formatted(.dateTime.month(.abbreviated).day().year())
     }
+}
+
+struct Folder: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String
+    var created = Date()
 }
 
 struct Snippet: Codable, Identifiable, Equatable {
@@ -282,6 +308,7 @@ final class AppStore: ObservableObject {
     @Published var customTransforms: [Transform] = [] { didSet { save(customTransforms, "transforms") } }
     @Published var meetings: [Meeting] = [] { didSet { save(meetings, "meetings") } }
     @Published var notes: [Note] = [] { didSet { save(notes, "notes") } }
+    @Published var folders: [Folder] = [] { didSet { save(folders, "folders") } }
 
     nonisolated static let supportDir: URL = {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Rattle")
@@ -304,6 +331,7 @@ final class AppStore: ObservableObject {
         settings = load("settings") ?? Settings()
         customTransforms = load("transforms") ?? []
         meetings = load("meetings") ?? []
+        folders = load("folders") ?? []
         if let saved: [Note] = load("notes") {
             notes = saved
         } else if let old = try? String(contentsOf: url("scratchpad.txt"), encoding: .utf8), !old.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -316,7 +344,7 @@ final class AppStore: ObservableObject {
     }
 
     // Other processes (the MCP server) can edit these files. Pick those edits up, and never save while applying them.
-    private static let watched = ["meetings", "notes", "snippets", "dictionary"]
+    private static let watched = ["meetings", "notes", "folders", "snippets", "dictionary"]
     private var seen: [String: Date] = [:]
     private func modified(_ name: String) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url(name + ".json").path))?[.modificationDate] as? Date
@@ -330,6 +358,7 @@ final class AppStore: ObservableObject {
             switch n {
             case "meetings": if let v: [Meeting] = load(n) { meetings = v }
             case "notes": if let v: [Note] = load(n) { notes = v }
+            case "folders": if let v: [Folder] = load(n) { folders = v }
             case "snippets": if let v: [Snippet] = load(n) { snippets = v }
             default: if let v: [DictionaryEntry] = load(n) { dictionary = v }
             }

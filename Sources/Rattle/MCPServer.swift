@@ -231,21 +231,23 @@ enum MCPServer {
     private static func bool(_ v: Any?) -> Bool? { v as? Bool }
 
     private static let createNote = Tool(name: "create_note", description: "Create a new note. The first line becomes its title.",
-        properties: ["text": str("The note's text (Markdown)."), "pinned": ["type": "boolean", "description": "Pin the note."]], required: ["text"], writes: true) { a in
+        properties: ["text": str("The note's text (Markdown)."), "title": str("Optional title. Defaults to the first line."), "pinned": ["type": "boolean", "description": "Pin the note."]], required: ["text"], writes: true) { a in
         let text = (a["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return "Provide non-empty text." }
         var notes = load("notes") as [Note]
-        let n = Note(text: text, pinned: bool(a["pinned"]) ?? false)
+        var n = Note(text: text, pinned: bool(a["pinned"]) ?? false)
+        if let t = a["title"] as? String, !t.isEmpty { n.customTitle = t }
         notes.insert(n, at: 0); save(notes, "notes")
         return "Created note “\(n.title)” · id \(n.id)."
     }
 
     private static let updateNote = Tool(name: "update_note", description: "Replace a note's text and/or change whether it's pinned. Fields you leave out stay as they are.",
-        properties: ["id": str("Note id."), "text": str("New full text for the note."), "pinned": ["type": "boolean", "description": "Pin or unpin."]], required: ["id"], writes: true) { a in
+        properties: ["id": str("Note id."), "text": str("New full text for the note."), "title": str("New title."), "pinned": ["type": "boolean", "description": "Pin or unpin."]], required: ["id"], writes: true) { a in
         guard let id = uuidArg(a) else { return "Provide a valid note id." }
         var notes = load("notes") as [Note]
         guard let i = notes.firstIndex(where: { $0.id == id }) else { return "No note with id \(id)." }
         if let t = a["text"] as? String { notes[i].text = t }
+        if let t = a["title"] as? String { notes[i].customTitle = t.isEmpty ? nil : t }
         if let p = bool(a["pinned"]) { notes[i].pinned = p }
         notes[i].updated = Date(); save(notes, "notes")
         return "Updated note “\(notes[i].title)”."

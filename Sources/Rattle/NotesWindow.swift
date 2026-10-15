@@ -12,6 +12,18 @@ extension AppStore {
                 })
     }
 
+    /// The note's explicit title; empty means "use the first line".
+    func noteTitle(_ id: UUID) -> Binding<String> {
+        Binding(get: { self.notes.first { $0.id == id }?.customTitle ?? "" },
+                set: { value in
+                    guard let i = self.notes.firstIndex(where: { $0.id == id }) else { return }
+                    let v: String? = value.isEmpty ? nil : value
+                    guard self.notes[i].customTitle != v else { return }
+                    self.notes[i].customTitle = v
+                    self.notes[i].updated = Date()
+                })
+    }
+
     func isBlankNote(_ id: UUID) -> Bool {
         notes.first { $0.id == id }?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
     }

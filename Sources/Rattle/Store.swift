@@ -345,11 +345,23 @@ final class AppStore: ObservableObject {
 
     private var loading = true
 
+    /// Whether Rattle has been used from this folder before: any saved data, or a downloaded speech model.
+    nonisolated static func hasPriorUse(in dir: URL) -> Bool {
+        let fm = FileManager.default
+        if ["history", "notes", "meetings", "dictionary", "snippets"].contains(where: { fm.fileExists(atPath: dir.appendingPathComponent("\($0).json").path) }) { return true }
+        let models = (try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("models").path)) ?? []
+        return models.contains { $0.hasSuffix(".bin") }
+    }
+
     private init() {
         history = load("history") ?? []
         dictionary = load("dictionary") ?? []
         snippets = load("snippets") ?? []
-        settings = load("settings") ?? Settings()
+        if let saved: Settings = load("settings") { settings = saved }
+        else {
+            // No settings file yet. Someone who kept every default still has history or a model on disk.
+            var fresh = Settings(); fresh.onboardingDone = Self.hasPriorUse(in: Self.supportDir); settings = fresh
+        }
         customTransforms = load("transforms") ?? []
         meetings = load("meetings") ?? []
         folders = load("folders") ?? []

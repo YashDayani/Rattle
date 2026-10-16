@@ -1,4 +1,4 @@
-import Foundation
+import AVFoundation
 
 /// The first-run onboarding steps, in order.
 enum OnboardingStep: Int, CaseIterable {
@@ -38,6 +38,9 @@ enum OnboardingFlow {
     static func canSkip(_ step: OnboardingStep, _ c: OnboardingChecks) -> Bool {
         (step == .permissions || step == .engine) && !canContinue(step, c)
     }
+
+    /// Once access was denied, macOS won't ask again, so Allow has to open System Settings instead.
+    static func micAllowOpensSettings(_ status: AVAuthorizationStatus) -> Bool { status == .denied || status == .restricted }
 
     static func next(_ step: OnboardingStep) -> OnboardingStep? { OnboardingStep(rawValue: step.rawValue + 1) }
     static func back(_ step: OnboardingStep) -> OnboardingStep? { OnboardingStep(rawValue: step.rawValue - 1) }

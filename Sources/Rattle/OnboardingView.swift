@@ -183,7 +183,8 @@ struct OnboardingView: View {
     private var permissionsStep: some View {
         VStack(spacing: 0) {
             permissionRow("Microphone", "To hear your voice", granted: checks.micGranted) {
-                Permissions.requestMic { _ in tick += 1 }
+                if OnboardingFlow.micAllowOpensSettings(Permissions.microphone) { Permissions.openPrivacy("Privacy_Microphone") }
+                else { Permissions.requestMic { _ in tick += 1 } }
             }
             Divider().overlay(Theme.line).padding(.horizontal, 14)
             permissionRow("Accessibility", "To type where your cursor is", granted: checks.axGranted) {

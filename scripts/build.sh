@@ -28,7 +28,7 @@ ICON_FILE_KEY="  <key>CFBundleIconFile</key><string>AppIcon</string>"
 [ -n "$ICON_NAME" ] && { ICON_FILE_KEY="  <key>CFBundleIconFile</key><string>Rattle</string>"; rm -f "$APP/Contents/Resources/AppIcon.icns"; }   # actool emits Rattle.icns next to Assets.car; the system styles the .icon
 cp scripts/lucide-LICENSE.txt "$APP/Contents/Resources/lucide-LICENSE.txt"   # icon set licence notice
 mkdir -p "$APP/Contents/Resources/Fonts" && cp Fonts/* "$APP/Contents/Resources/Fonts/"   # Figtree + EB Garamond with their OFL notices
-mkdir -p "$APP/Contents/Resources/Onboarding" && cp Onboarding/*.svg "$APP/Contents/Resources/Onboarding/"   # onboarding illustrations (Open Doodles, CC0)
+mkdir -p "$APP/Contents/Resources/Illustrations" && cp Illustrations/*.svg "$APP/Contents/Resources/Illustrations/"   # onboarding and empty-state illustrations (Open Doodles, CC0)
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

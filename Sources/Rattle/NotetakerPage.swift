@@ -173,7 +173,7 @@ struct NotetakerPage: View {
         else if let m = selected { detail(m) }
         else {
             VStack(spacing: 8) {
-                Icon("waveform.badge.mic", 42).foregroundStyle(Theme.muted)
+                IllustrationView(name: Illustration.meetingsEmpty, height: 170).padding(.bottom, 12)
                 Text("Start a meeting before a call").font(Theme.serif(22))
                 Text("Rattle transcribes both sides on your Mac, then summarizes with your AI model.").font(Theme.sans(13.5)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
             }.frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -202,9 +202,12 @@ struct EmptyState: View {
     let icon: String
     let title: String
     var detail: String? = nil
+    /// Shown instead of the icon when set (an Illustration name).
+    var illustration: String? = nil
     var body: some View {
         VStack(spacing: 6) {
-            Icon(icon, 24).foregroundStyle(Theme.muted).padding(.bottom, 4)
+            if let illustration { IllustrationView(name: illustration, height: 150).padding(.bottom, 10) }
+            else { Icon(icon, 24).foregroundStyle(Theme.muted).padding(.bottom, 4) }
             Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
             if let detail { Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted).multilineTextAlignment(.center) }
         }

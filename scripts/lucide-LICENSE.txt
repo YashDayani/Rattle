@@ -70,4 +70,4 @@ SOFTWARE.
 
 ---
 
-Onboarding illustrations: Open Doodles by Pablo Stanley (https://www.opendoodles.com), CC0 1.0 public domain. Recoloured for Rattle.
+Onboarding and empty-state illustrations: Open Doodles by Pablo Stanley (https://www.opendoodles.com), CC0 1.0 public domain. Recoloured for Rattle.

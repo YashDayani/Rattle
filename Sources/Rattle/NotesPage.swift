@@ -83,7 +83,9 @@ struct NotesPage: View {
     }
 
     private func empty(title: String, detail: String?) -> some View {
-        EmptyState(icon: store.notes.isEmpty && store.folders.isEmpty ? "note.text" : "magnifyingglass", title: title, detail: detail)
+        let firstRun = store.notes.isEmpty && store.folders.isEmpty
+        return EmptyState(icon: firstRun ? "note.text" : "magnifyingglass", title: title, detail: detail,
+                          illustration: firstRun ? Illustration.notesEmpty : nil)
     }
 
     // MARK: Actions

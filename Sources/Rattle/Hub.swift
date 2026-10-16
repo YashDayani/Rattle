@@ -265,6 +265,7 @@ struct DictationPage: View {
             if store.history.isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
+                    IllustrationView(name: Illustration.dictationEmpty, height: 170).padding(.bottom, 12)
                     Text("No dictations yet").font(Theme.serif(22))
                     Text("Click into any text field, hold \(store.settings.shortcut.title), and talk.").foregroundStyle(Theme.muted).font(Theme.sans(14))
                 }.frame(maxWidth: .infinity)

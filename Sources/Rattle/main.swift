@@ -31,11 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         flowBar.setVisible(store.settings.showFlowBar)
         DictationController.shared.boot()
         if store.settings.speechEngine == .local, let m = WhisperModel.all.first(where: { $0.id == store.settings.model }) { WhisperServer.shared.ensure(model: m) }
-        showHub()
-        if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
+        if store.settings.onboardingDone {
+            showHub()
+            if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
+        } else {
+            // Onboarding asks for Accessibility itself, with an explanation.
+            OnboardingWindowController.shared.show()
+        }
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showHub(); return true }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if OnboardingWindowController.shared.isOpen { OnboardingWindowController.shared.show() } else { showHub() }
+        return true
+    }
     func applicationWillTerminate(_ notification: Notification) { WhisperServer.shared.stop() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 

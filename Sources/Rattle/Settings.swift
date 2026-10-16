@@ -82,8 +82,15 @@ struct GeneralTab: View {
                 Dropdown(selection: Binding(get: { store.settings.micUID ?? "" }, set: { store.settings.micUID = $0.isEmpty ? nil : $0 }),
                          options: [("", "Auto-detect")] + mics.map { ($0.uid, $0.name) }, width: 200)
             }
-            SettingRow(title: "Dictation language", detail: languageNote, last: true) {
+            SettingRow(title: "Dictation language", detail: languageNote) {
                 Dropdown(selection: $store.settings.language, options: Self.languages.map { ($0.0, $0.1) }, width: 160)
+            }
+            SettingRow(title: "Onboarding", detail: "Walk through setup again.", last: true) {
+                PillButton(title: "Show again") {
+                    store.settings.onboardingDone = false
+                    Router.shared.showSettings = false
+                    OnboardingWindowController.shared.show()
+                }
             }
         }
         .onAppear { mics = AudioDevices.inputs() }

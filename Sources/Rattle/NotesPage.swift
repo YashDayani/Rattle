@@ -107,14 +107,15 @@ struct NotesPage: View {
     private func remove(_ id: UUID) { store.notes.removeAll { $0.id == id } }
 
     private func newFolder() {
-        guard let name = promptName(title: "New folder", initial: "") else { return }
-        store.folders.append(Folder(name: name))
+        Router.shared.namePrompt = NamePrompt(title: "New folder", placeholder: "Folder name", confirm: "Create") { name in
+            store.folders.append(Folder(name: name))
+        }
     }
 
     private func rename(_ f: Folder) {
-        guard let name = promptName(title: "Rename folder", initial: f.name),
-              let i = store.folders.firstIndex(where: { $0.id == f.id }) else { return }
-        store.folders[i].name = name
+        Router.shared.namePrompt = NamePrompt(title: "Rename folder", placeholder: "Folder name", initial: f.name) { name in
+            if let i = store.folders.firstIndex(where: { $0.id == f.id }) { store.folders[i].name = name }
+        }
     }
 
     /// Deleting a folder never deletes its notes; they go back to the top level.
@@ -129,19 +130,6 @@ struct NotesPage: View {
         guard let id = UUID(uuidString: idString), let i = store.notes.firstIndex(where: { $0.id == id }) else { return false }
         if store.notes[i].folderID != target { store.notes[i].folderID = target }
         return true
-    }
-
-    private func promptName(title: String, initial: String) -> String? {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.addButton(withTitle: "Save"); alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        field.stringValue = initial
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? nil : name
     }
 
     private func togglePin(_ id: UUID) {

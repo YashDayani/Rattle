@@ -81,6 +81,13 @@ struct HubView: View {
                 SettingsModal(close: { router.showSettings = false }).transition(.scale(scale: 0.97).combined(with: .opacity))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+
+            if let prompt = router.namePrompt {
+                Color.black.opacity(0.32).ignoresSafeArea().onTapGesture { router.namePrompt = nil }
+                NamePromptDialog(prompt: prompt, close: { router.namePrompt = nil }).id(prompt.id)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .coordinateSpace(name: "hubRoot")
         .overlayPreferenceValue(NavRowFrames.self) { frames in navTooltips(frames) }
@@ -88,6 +95,7 @@ struct HubView: View {
         // The window itself is transparent; this gives it its rounded corners (square in full screen).
         .clipShape(RoundedRectangle(cornerRadius: router.isFullScreen ? 0 : Self.windowRadius, style: .continuous))
         .animation(Theme.Motion.standard, value: router.showSettings)
+        .animation(Theme.Motion.standard, value: router.namePrompt?.id)
         .animation(Theme.Motion.standard, value: router.isFullScreen)
         .animation(Theme.Motion.quick, value: page)
     }

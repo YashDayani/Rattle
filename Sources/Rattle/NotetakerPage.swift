@@ -6,6 +6,8 @@ final class Router: ObservableObject {
     @Published var page: HubPage = .dictation
     @Published var showSettings = false
     @Published var settingsTab: SettingsTab = .general
+    /// Rattle's own name dialog (new folder, rename), shown over the whole window.
+    @Published var namePrompt: NamePrompt?
     @Published var sidebarCollapsed = false
     @Published var isFullScreen = false
     /// Note open in the Notes page editor, if any.

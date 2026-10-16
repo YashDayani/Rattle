@@ -9,6 +9,16 @@ final class DictationController: ObservableObject {
     @Published var phase: DictationPhase = .idle
     @Published var levels: [Float] = Array(repeating: 0, count: 14)
     @Published var lastError: String?
+    /// Onboarding's practice box: dictation still types, but isn't saved to history or counted in Insights.
+    var practiceMode = false
+    @Published var lastPracticeText: String?
+    /// Decided when a dictation starts, so a slow transcription can't change where it's counted.
+    private var practiceRun = false
+
+    /// A dictation is practice only if onboarding's practice step is showing and Rattle itself had focus.
+    nonisolated static func isPractice(practiceMode: Bool, frontPID: pid_t?, ownPID: pid_t) -> Bool {
+        practiceMode && frontPID == ownPID
+    }
 
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyManager()
@@ -101,6 +111,7 @@ final class DictationController: ObservableObject {
             return
         }
         frontApp = NSWorkspace.shared.frontmostApplication
+        practiceRun = Self.isPractice(practiceMode: practiceMode, frontPID: frontApp?.processIdentifier, ownPID: getpid())
         do {
             try recorder.start(deviceUID: store.settings.micUID)
         } catch {
@@ -160,7 +171,8 @@ final class DictationController: ObservableObject {
                 frontApp?.activate()
                 try? await Task.sleep(nanoseconds: 80_000_000)
                 TextInserter.insert(text)
-                store.history.insert(HistoryItem(date: Date(), raw: raw, text: text, duration: duration, appName: appName, bundleID: bundleID, corrected: corrected, dictFixes: dictFixes), at: 0)
+                if practiceRun { lastPracticeText = text }
+                else { store.history.insert(HistoryItem(date: Date(), raw: raw, text: text, duration: duration, appName: appName, bundleID: bundleID, corrected: corrected, dictFixes: dictFixes), at: 0) }
                 if settings.soundsEnabled { Sounds.shared.play("done") }
                 phase = .idle
             } catch {

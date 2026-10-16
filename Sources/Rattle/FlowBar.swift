@@ -15,6 +15,7 @@ enum FlowBarLayout {
     static let height: CGFloat = 30                     // height of the control row
     static let control: CGFloat = 30                    // a round control
     static let wide: CGFloat = 54                       // the mic bubble, and a control widened by hover
+    static let gap: CGFloat = 8                         // between every pair of controls
     static var centerX: CGFloat { panel.width / 2 }
 
     /// Bottom of the control row, measured from the bottom of the panel.
@@ -27,14 +28,14 @@ enum FlowBarLayout {
     static func notetakerWidth(_ hovered: FlowBarTarget?) -> CGFloat { hovered == .notetaker || hovered == .notetakerPage ? wide : control }
     static func transformsWidth(_ hovered: FlowBarTarget?) -> CGFloat { hovered == .transforms || hovered == .transformsPage ? wide : control }
     static var dictateMinX: CGFloat { centerX - wide / 2 }
-    static var notetakerMinX: CGFloat { centerX + wide / 2 + 6 }
-    static func notesMinX(_ hovered: FlowBarTarget?) -> CGFloat { notetakerMinX + notetakerWidth(hovered) + 10 }
-    static func transformsMinX(_ hovered: FlowBarTarget?) -> CGFloat { notesMinX(hovered) + control + 10 }
+    static var notetakerMinX: CGFloat { centerX + wide / 2 + gap }
+    static func notesMinX(_ hovered: FlowBarTarget?) -> CGFloat { notetakerMinX + notetakerWidth(hovered) + gap }
+    static func transformsMinX(_ hovered: FlowBarTarget?) -> CGFloat { notesMinX(hovered) + control + gap }
 
     /// Pointer zones, measured from the bottom of the panel (AppKit coordinates).
     static var restZone: CGRect { CGRect(x: centerX - 40, y: 0, width: 80, height: 20) }
     static var openZone: CGRect {
-        let maxX = notetakerMinX + wide + 10 + control + 10 + wide      // widest the row can get
+        let maxX = notetakerMinX + wide + gap + control + gap + wide      // widest the row can get
         return CGRect(x: dictateMinX - 12, y: 0, width: maxX - dictateMinX + 24, height: rowMinY + height + 12)
     }
 

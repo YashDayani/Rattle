@@ -26,12 +26,32 @@ struct Note: Codable, Identifiable, Equatable {
     var created = Date()
     var updated = Date()
     var pinned = false
+    /// Optional explicit title. Empty falls back to the first line of the text.
+    var customTitle: String? = nil
+    var folderID: UUID? = nil
 
     private var lines: [Substring] { text.split(separator: "\n", omittingEmptySubsequences: true).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
     /// The first non-empty line.
-    var title: String { lines.first.map { $0.trimmingCharacters(in: .whitespaces) } ?? "New note" }
-    /// Everything after the title line.
-    var preview: String { lines.dropFirst().map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n") }
+    var title: String {
+        if let t = customTitle?.trimmingCharacters(in: .whitespaces), !t.isEmpty { return t }
+        return lines.first.map { Note.plain($0.trimmingCharacters(in: .whitespaces)) } ?? "New note"
+    }
+    /// Body shown on cards: everything after the first-line title (or all of it when there is a custom title), Markdown markers stripped.
+    var preview: String {
+        let hasTitle = !(customTitle?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+        return (hasTitle ? lines[...] : lines.dropFirst()).map { Note.plain($0.trimmingCharacters(in: .whitespaces)) }.joined(separator: "\n")
+    }
+    /// Strips leading Markdown markers (#, >, -, *, 1.) and inline emphasis for display.
+    static func plain(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: #"^(#{1,6}\s+|>\s+|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)"#, with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: #"(\*\*|__|`|\*)"#, with: "", options: .regularExpression)
+        return t
+    }
+    /// True when pasted text looks like Markdown worth rendering.
+    static func looksLikeMarkdown(_ s: String) -> Bool {
+        s.range(of: #"(?m)^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\|.*\|)"#, options: .regularExpression) != nil
+            || s.contains("**") || s.range(of: #"\[[^\]]+\]\([^)]+\)"#, options: .regularExpression) != nil
+    }
     var words: Int { text.split { $0 == " " || $0.isNewline }.count }
     /// Time for today, "Yesterday", otherwise the date.
     var updatedLabel: String {
@@ -40,6 +60,12 @@ struct Note: Codable, Identifiable, Equatable {
         if cal.isDateInYesterday(updated) { return "Yesterday" }
         return updated.formatted(.dateTime.month(.abbreviated).day().year())
     }
+}
+
+struct Folder: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String
+    var created = Date()
 }
 
 struct Snippet: Codable, Identifiable, Equatable {
@@ -192,6 +218,16 @@ struct Settings: Codable, Equatable {
     /// Cloud credentials for the transcriber, or nil when transcribing locally.
     var cloudSpeech: CloudSpeech? { speechEngine == .cloud ? CloudSpeech(key: groqKey, model: groqModel) : nil }
     var cloudSpeechReady: Bool { speechEngine == .cloud && !groqKey.isEmpty }
+    /// Speech model for meeting transcripts: "" follows dictation, otherwise "local:<whisper id>" or "cloud:<groq model>".
+    var meetingSpeechModel: String = ""
+    /// The speech model and cloud credentials meeting transcription uses.
+    var meetingSpeech: (model: WhisperModel, cloud: CloudSpeech?) {
+        let dictation = WhisperModel.all.first { $0.id == model } ?? WhisperModel.all[0]
+        let parts = meetingSpeechModel.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return (dictation, cloudSpeech) }
+        if parts[0] == "cloud" { return (dictation, CloudSpeech(key: groqKey, model: parts[1])) }
+        return (WhisperModel.all.first { $0.id == parts[1] } ?? dictation, nil)
+    }
     var soundsEnabled: Bool = true
     var cleanup: CleanupLevel = .light
     var tones: [String: Tone] = [
@@ -209,6 +245,10 @@ struct Settings: Codable, Equatable {
     var llmBaseURL: String = "http://localhost:1234/v1"
     var llmModel: String = ""
     var llmKey: String = ""
+    /// Model for meeting summaries; "" uses llmModel.
+    var summaryModel: String = ""
+    /// Send the meeting recording (not the transcript) to the summary model when the AI server is Gemini.
+    var summaryFromAudio: Bool = true
     // Transforms
     var autoTransformID: String? = nil
     var commandModeEnabled: Bool = true
@@ -225,6 +265,8 @@ struct Settings: Codable, Equatable {
     var mcpSnippets: Bool = true
     /// Lets connected apps rename, edit and delete notes and meetings. Off until the user turns it on.
     var mcpAllowEdits: Bool = false
+    /// False until the first-run onboarding is finished.
+    var onboardingDone: Bool = false
 
     init() {}
 
@@ -249,6 +291,9 @@ struct Settings: Codable, Equatable {
         llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? d.llmBaseURL
         llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? d.llmModel
         llmKey = try c.decodeIfPresent(String.self, forKey: .llmKey) ?? d.llmKey
+        summaryModel = try c.decodeIfPresent(String.self, forKey: .summaryModel) ?? d.summaryModel
+        summaryFromAudio = try c.decodeIfPresent(Bool.self, forKey: .summaryFromAudio) ?? d.summaryFromAudio
+        meetingSpeechModel = try c.decodeIfPresent(String.self, forKey: .meetingSpeechModel) ?? d.meetingSpeechModel
         autoTransformID = try c.decodeIfPresent(String.self, forKey: .autoTransformID)
         commandModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .commandModeEnabled) ?? d.commandModeEnabled
         commandShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .commandShortcut) ?? d.commandShortcut
@@ -261,13 +306,15 @@ struct Settings: Codable, Equatable {
         mcpDictations = try c.decodeIfPresent(Bool.self, forKey: .mcpDictations) ?? d.mcpDictations
         mcpSnippets = try c.decodeIfPresent(Bool.self, forKey: .mcpSnippets) ?? d.mcpSnippets
         mcpAllowEdits = try c.decodeIfPresent(Bool.self, forKey: .mcpAllowEdits) ?? d.mcpAllowEdits
+        // A settings file from before onboarding existed belongs to someone already using Rattle.
+        onboardingDone = try c.decodeIfPresent(Bool.self, forKey: .onboardingDone) ?? true
     }
 
     enum Keys: String, CodingKey {
         case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
-        case speechEngine, groqKey, groqModel
+        case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
         case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
-        case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits
+        case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits, onboardingDone
     }
 }
 
@@ -282,6 +329,7 @@ final class AppStore: ObservableObject {
     @Published var customTransforms: [Transform] = [] { didSet { save(customTransforms, "transforms") } }
     @Published var meetings: [Meeting] = [] { didSet { save(meetings, "meetings") } }
     @Published var notes: [Note] = [] { didSet { save(notes, "notes") } }
+    @Published var folders: [Folder] = [] { didSet { save(folders, "folders") } }
 
     nonisolated static let supportDir: URL = {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Rattle")
@@ -297,13 +345,26 @@ final class AppStore: ObservableObject {
 
     private var loading = true
 
+    /// Whether Rattle has been used from this folder before: any saved data, or a downloaded speech model.
+    nonisolated static func hasPriorUse(in dir: URL) -> Bool {
+        let fm = FileManager.default
+        if ["history", "notes", "meetings", "dictionary", "snippets"].contains(where: { fm.fileExists(atPath: dir.appendingPathComponent("\($0).json").path) }) { return true }
+        let models = (try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("models").path)) ?? []
+        return models.contains { $0.hasSuffix(".bin") }
+    }
+
     private init() {
         history = load("history") ?? []
         dictionary = load("dictionary") ?? []
         snippets = load("snippets") ?? []
-        settings = load("settings") ?? Settings()
+        if let saved: Settings = load("settings") { settings = saved }
+        else {
+            // No settings file yet. Someone who kept every default still has history or a model on disk.
+            var fresh = Settings(); fresh.onboardingDone = Self.hasPriorUse(in: Self.supportDir); settings = fresh
+        }
         customTransforms = load("transforms") ?? []
         meetings = load("meetings") ?? []
+        folders = load("folders") ?? []
         if let saved: [Note] = load("notes") {
             notes = saved
         } else if let old = try? String(contentsOf: url("scratchpad.txt"), encoding: .utf8), !old.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -316,7 +377,7 @@ final class AppStore: ObservableObject {
     }
 
     // Other processes (the MCP server) can edit these files. Pick those edits up, and never save while applying them.
-    private static let watched = ["meetings", "notes", "snippets", "dictionary"]
+    private static let watched = ["meetings", "notes", "folders", "snippets", "dictionary"]
     private var seen: [String: Date] = [:]
     private func modified(_ name: String) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url(name + ".json").path))?[.modificationDate] as? Date
@@ -330,6 +391,7 @@ final class AppStore: ObservableObject {
             switch n {
             case "meetings": if let v: [Meeting] = load(n) { meetings = v }
             case "notes": if let v: [Note] = load(n) { notes = v }
+            case "folders": if let v: [Folder] = load(n) { folders = v }
             case "snippets": if let v: [Snippet] = load(n) { snippets = v }
             default: if let v: [DictionaryEntry] = load(n) { dictionary = v }
             }

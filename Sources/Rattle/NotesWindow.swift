@@ -12,6 +12,18 @@ extension AppStore {
                 })
     }
 
+    /// The note's explicit title; empty means "use the first line".
+    func noteTitle(_ id: UUID) -> Binding<String> {
+        Binding(get: { self.notes.first { $0.id == id }?.customTitle ?? "" },
+                set: { value in
+                    guard let i = self.notes.firstIndex(where: { $0.id == id }) else { return }
+                    let v: String? = value.isEmpty ? nil : value
+                    guard self.notes[i].customTitle != v else { return }
+                    self.notes[i].customTitle = v
+                    self.notes[i].updated = Date()
+                })
+    }
+
     func isBlankNote(_ id: UUID) -> Bool {
         notes.first { $0.id == id }?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
     }
@@ -151,7 +163,7 @@ struct NotesWindowView: View {
             }
         }
         .background(Theme.window)
-        .animation(.easeInOut(duration: 0.15), value: model.sidebarOpen)
+        .animation(Theme.Motion.quick, value: model.sidebarOpen)
         .onReceive(model.$active) { _ in NotesWindow.shared.focusEditor() }
     }
 
@@ -215,7 +227,7 @@ struct NotesWindowView: View {
                     TextField("Search", text: $model.query).textFieldStyle(.plain).font(Theme.sans(12))
                 }
                 .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.md).strokeBorder(Theme.line))
                 .padding(.horizontal, 8).padding(.top, 2).padding(.bottom, 6)
             }
             Rectangle().fill(Theme.line).frame(height: 1).padding(.horizontal, 8).padding(.bottom, 10).padding(.top, 4)
@@ -238,7 +250,7 @@ struct NotesWindowView: View {
 
     private var editorPanel: some View {
         ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 12).fill(Theme.page)
+            RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.page)
             if let id = model.active {
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: store.noteText(id))
@@ -256,7 +268,7 @@ struct NotesWindowView: View {
             }
             overlays.padding(12)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
         .padding(.trailing, 8).padding(.bottom, 8)
     }
 
@@ -290,9 +302,9 @@ private struct BarButton: View {
     var body: some View {
         Button(action: action) {
             Icon(icon, 16).foregroundStyle(Theme.ink).frame(width: 28, height: 28)
-                .background(RoundedRectangle(cornerRadius: 6).fill(hover ? Theme.selected : .clear))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(hover ? Theme.selected : .clear))
                 .contentShape(Rectangle())
-        }.buttonStyle(.plain).pointer().help(help).onHover { hover = $0 }
+        }.buttonStyle(.press).pointer().tip(help).onHover { hover = $0 }
     }
 }
 
@@ -313,7 +325,7 @@ private struct RailButton: View {
             .foregroundStyle(Theme.ink).frame(height: 36)
             .background(hover ? Theme.selected : .clear)
             .contentShape(Rectangle())
-        }.buttonStyle(.plain).pointer().help(open ? "" : title).onHover { hover = $0 }
+        }.buttonStyle(.press).pointer().tip(open ? "" : title, edge: .trailing).onHover { hover = $0 }
     }
 }
 
@@ -330,10 +342,10 @@ private struct NoteTab: View {
             Text(title).font(Theme.sans(12, active ? .semibold : .medium)).lineLimit(1).truncationMode(.tail).frame(maxWidth: 120)
             Button(action: close) {
                 Icon("xmark", 10).frame(width: 14, height: 14)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(closeHover ? Theme.selected : .clear))
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(closeHover ? Theme.selected : .clear))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).pointer().onHover { closeHover = $0 }
+            .buttonStyle(.press).pointer().onHover { closeHover = $0 }
             .opacity(active || hover ? 1 : 0)
         }
         .foregroundStyle(active || hover ? Theme.ink : Theme.muted)
@@ -364,9 +376,9 @@ private struct NoteListRow: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6).fill(active ? Theme.selected : (hover ? Theme.selected.opacity(0.5) : .clear)))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(active ? Theme.selected : (hover ? Theme.selected.opacity(0.5) : .clear)))
             .contentShape(Rectangle())
-        }.buttonStyle(.plain).pointer().onHover { hover = $0 }
+        }.buttonStyle(.press).pointer().onHover { hover = $0 }
     }
 }
 
@@ -387,7 +399,7 @@ private struct NotePill: View {
             .background(Capsule().fill(prominent ? Theme.ink : Theme.button))
             .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
             .contentShape(Capsule())
-        }.buttonStyle(.plain).pointer()
+        }.buttonStyle(.press).pointer()
     }
 }
 

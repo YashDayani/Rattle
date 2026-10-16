@@ -26,7 +26,7 @@ struct TabBar: View {
                         .foregroundStyle(selection == i ? Theme.ink : Theme.muted)
                         .padding(.bottom, 12)
                         .overlay(alignment: .bottom) { if selection == i { Rectangle().fill(Theme.ink).frame(height: 2) } }
-                }.buttonStyle(.plain).pointer()
+                }.buttonStyle(.press).pointer()
             }
             Spacer()
         }
@@ -38,8 +38,8 @@ struct TileCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content.frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.card))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).stroke(Theme.line))
     }
 }
 
@@ -87,7 +87,7 @@ struct InsightsPage: View {
                         Circle().fill(Theme.card).frame(width: 52, height: 52)
                         Icon(shared ? "checkmark" : "square.and.arrow.up", 19).foregroundStyle(Theme.teal1)
                     }
-                }.buttonStyle(.plain).pointer().help("Copy a summary of your stats")
+                }.buttonStyle(.press).pointer().tip("Copy a summary of your stats")
             }
             TabBar(items: ["Your usage", "Your voice"], selection: $tab)
             ScrollView {
@@ -198,7 +198,7 @@ struct UsageTab: View {
                             GeometryReader { geo in
                                 let w = max(46, geo.size.width * 0.62 * CGFloat(pct))
                                 Text("\(Int((pct * 100).rounded()))%").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.page)
-                                    .frame(width: w, height: 32).background(RoundedRectangle(cornerRadius: 4).fill(pct > 0.5 ? Theme.teal1 : (pct > 0.05 ? Theme.teal2 : Theme.teal3)))
+                                    .frame(width: w, height: 32).background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(pct > 0.5 ? Theme.teal1 : (pct > 0.05 ? Theme.teal2 : Theme.teal3)))
                             }.frame(height: 32)
                             Text("\(n) \(cat.rawValue.uppercased())").font(Theme.caps(12)).tracking(0.8).frame(maxWidth: 170, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
                         }
@@ -219,7 +219,7 @@ struct UsageTab: View {
                 Heatmap(history: store.history)
                 HStack(spacing: 6) {
                     Text("More").font(Theme.sans(12)).foregroundStyle(Theme.muted)
-                    ForEach([Theme.teal1, Theme.teal2, Theme.teal3, Theme.teal4], id: \.self) { RoundedRectangle(cornerRadius: 3).fill($0).frame(width: 16, height: 16) }
+                    ForEach([Theme.teal1, Theme.teal2, Theme.teal3, Theme.teal4], id: \.self) { RoundedRectangle(cornerRadius: Theme.Radius.xs).fill($0).frame(width: 16, height: 16) }
                     Text("Less").font(Theme.sans(12)).foregroundStyle(Theme.muted)
                 }
             }.padding(28)
@@ -291,7 +291,7 @@ struct Heatmap: View {
                         VStack(spacing: gap) {
                             ForEach(0..<7, id: \.self) { r in
                                 let d = cal.date(byAdding: .day, value: w * 7 + r, to: start)!
-                                RoundedRectangle(cornerRadius: 2).fill(color(d, today, words, peak)).frame(width: cell, height: cell)
+                                RoundedRectangle(cornerRadius: Theme.Radius.xs / 2).fill(color(d, today, words, peak)).frame(width: cell, height: cell)
                             }
                         }
                     }
@@ -345,7 +345,7 @@ struct VoiceTab: View {
                         if store.history.count >= 3 {
                             Button { refine() } label: {
                                 Label { Text(busy ? "Writing…" : "Refine with AI") } icon: { Icon("sparkles", 14) }.font(Theme.sans(12.5, .medium))
-                            }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).padding(.top, 4).disabled(busy)
+                            }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted).padding(.top, 4).disabled(busy)
                         }
                     }
                     Spacer(minLength: 20)
@@ -364,7 +364,7 @@ struct VoiceTab: View {
                 }
                 TileCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        RoundedRectangle(cornerRadius: 8).fill(Color(red: 0.91, green: 0.47, blue: 0.33)).frame(width: 52, height: 52)
+                        RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Color(red: 0.91, green: 0.47, blue: 0.33)).frame(width: 52, height: 52)
                             .overlay(Icon("sun.max.fill", 30).foregroundStyle(.white))
                         Text(stats.peak).font(Theme.serif(28)).padding(.top, 8)
                         Text("YOUR PEAK TIME & PLACE").font(Theme.caps(11.5)).tracking(1)

@@ -45,8 +45,10 @@ enum LLM {
         catch { throw LLMError.unreachable(c.baseURL) }
     }
 
-    static func chat(system: String, user: String, settings: Settings, maxTokens: Int = 1200, timeout: TimeInterval = 90) async throws -> String {
+    /// `model` overrides the AI model from settings when non-empty.
+    static func chat(system: String, user: String, settings: Settings, model: String = "", maxTokens: Int = 1200, timeout: TimeInterval = 90) async throws -> String {
         var c = Config(settings)
+        if !model.isEmpty { c.model = model }
         if c.model.isEmpty {
             guard let first = try await models(c).first else { throw LLMError.noModel }
             c.model = first
@@ -59,13 +61,22 @@ enum LLM {
             "stream": false
         ]
         let body = try JSONSerialization.data(withJSONObject: payload)
-        let data: Data, resp: URLResponse
-        do { (data, resp) = try await URLSession.shared.data(for: request(c, path: "/chat/completions", body: body, timeout: timeout)) }
-        catch let e as URLError where e.code == .timedOut { throw LLMError.server("The AI model took too long to answer.") }
-        catch { throw LLMError.unreachable(c.baseURL) }
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            let msg = ((json?["error"] as? [String: Any])?["message"] as? String) ?? (json?["error"] as? String) ?? "AI server error"
+        var data = Data(), status = 0
+        // Busy or rate-limited servers (429, 503) usually recover within seconds, so retry those twice.
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000) }
+            let resp: URLResponse
+            do { (data, resp) = try await URLSession.shared.data(for: request(c, path: "/chat/completions", body: body, timeout: timeout)) }
+            catch let e as URLError where e.code == .timedOut { throw LLMError.server("The AI model took too long to answer.") }
+            catch { throw LLMError.unreachable(c.baseURL) }
+            status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if status != 429 && status != 503 { break }
+        }
+        let parsed = try? JSONSerialization.jsonObject(with: data)
+        // Gemini wraps errors in a one-element array.
+        let json = (parsed as? [String: Any]) ?? (parsed as? [[String: Any]])?.first
+        guard status == 200 else {
+            let msg = ((json?["error"] as? [String: Any])?["message"] as? String) ?? (json?["error"] as? String) ?? "AI server error (\(status))"
             throw LLMError.server(msg)
         }
         let choice = (json?["choices"] as? [[String: Any]])?.first
@@ -115,5 +126,83 @@ enum Transforms {
         }
         let sys = base + "\n\nThe user spoke a request for text to be written (a reply, a message, a short passage). Write exactly that text, ready to paste."
         return try await LLM.chat(system: sys, user: instruction, settings: settings, maxTokens: 700)
+    }
+}
+
+/// Sends a meeting recording to Gemini (Files API + generateContent) so notes come from the audio itself.
+enum GeminiAudio {
+    private static let root = "https://generativelanguage.googleapis.com"
+
+    static func supports(_ s: Settings) -> Bool { URL(string: s.llmBaseURL)?.host == "generativelanguage.googleapis.com" }
+
+    static func summarize(audio: URL, system: String, prompt: String, settings s: Settings, model: String, maxTokens: Int, timeout: TimeInterval) async throws -> String {
+        guard !s.llmKey.isEmpty else { throw LLMError.server("Add your Gemini API key in Settings → AI.") }
+        let name = [model, s.llmModel].first { !$0.isEmpty } ?? "gemini-flash-latest"
+        let modelPath = name.hasPrefix("models/") ? name : "models/" + name
+        let file = try await upload(audio, key: s.llmKey)
+        defer { Task { _ = try? await send(path: "/v1beta/" + file.name, method: "DELETE", key: s.llmKey, timeout: 15) } }
+
+        let payload: [String: Any] = [
+            "system_instruction": ["parts": [["text": system]]],
+            "contents": [["role": "user", "parts": [["file_data": ["mime_type": file.mime, "file_uri": file.uri]], ["text": prompt]]]],
+            "generationConfig": ["temperature": 0.3, "maxOutputTokens": maxTokens + 2048]
+        ]
+        var json: [String: Any] = [:]
+        // Busy or rate-limited (429, 503): retry twice.
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000) }
+            let (j, status) = try await send(path: "/v1beta/\(modelPath):generateContent", body: JSONSerialization.data(withJSONObject: payload), key: s.llmKey, timeout: timeout)
+            json = j
+            if status == 200 { break }
+            if (status != 429 && status != 503) || attempt == 2 { throw LLMError.server(errorMessage(j, status)) }
+        }
+        let parts = (((json["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any])?["parts"] as? [[String: Any]]) ?? []
+        let text = LLM.stripThinking(parts.filter { ($0["thought"] as? Bool) != true }.compactMap { $0["text"] as? String }.joined())
+        if text.isEmpty { throw LLMError.server("Gemini returned an empty answer for the recording.") }
+        return text
+    }
+
+    private struct File { let name, uri, mime: String }
+
+    private static func upload(_ url: URL, key: String) async throws -> File {
+        guard let data = try? Data(contentsOf: url) else { throw LLMError.server("Couldn't read the meeting recording.") }
+        var r = URLRequest(url: URL(string: root + "/upload/v1beta/files")!)
+        r.httpMethod = "POST"; r.timeoutInterval = 600
+        r.setValue("raw", forHTTPHeaderField: "X-Goog-Upload-Protocol")
+        r.setValue("audio/mp4", forHTTPHeaderField: "Content-Type")
+        r.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        let (body, resp): (Data, URLResponse)
+        do { (body, resp) = try await URLSession.shared.upload(for: r, from: data) }
+        catch { throw LLMError.server("Couldn't upload the recording to Gemini. Check your internet connection.") }
+        let json = (try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200, var f = json["file"] as? [String: Any] else { throw LLMError.server(errorMessage(json, status)) }
+        // Large files are processed before they can be used.
+        var waited = 0
+        while (f["state"] as? String) == "PROCESSING", waited < 300 {
+            try await Task.sleep(nanoseconds: 2_000_000_000); waited += 2
+            if let name = f["name"] as? String { f = try await send(path: "/v1beta/" + name, method: "GET", key: key, timeout: 30).json }
+        }
+        guard (f["state"] as? String) == "ACTIVE", let name = f["name"] as? String, let uri = f["uri"] as? String else {
+            throw LLMError.server("Gemini couldn't process the recording.")
+        }
+        return File(name: name, uri: uri, mime: (f["mimeType"] as? String) ?? "audio/mp4")
+    }
+
+    private static func send(path: String, method: String = "POST", body: Data? = nil, key: String, timeout: TimeInterval) async throws -> (json: [String: Any], status: Int) {
+        var r = URLRequest(url: URL(string: root + path)!)
+        r.httpMethod = method; r.timeoutInterval = timeout; r.httpBody = body
+        r.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        if body != nil { r.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        let (data, resp): (Data, URLResponse)
+        do { (data, resp) = try await URLSession.shared.data(for: r) }
+        catch let e as URLError where e.code == .timedOut { throw LLMError.server("Gemini took too long to answer.") }
+        catch { throw LLMError.unreachable(root) }
+        let parsed = try? JSONSerialization.jsonObject(with: data)
+        return ((parsed as? [String: Any]) ?? (parsed as? [[String: Any]])?.first ?? [:], (resp as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    private static func errorMessage(_ json: [String: Any], _ status: Int) -> String {
+        ((json["error"] as? [String: Any])?["message"] as? String).map { "Gemini: \($0)" } ?? "Gemini error (\(status))"
     }
 }

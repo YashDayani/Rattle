@@ -9,6 +9,9 @@ final class DictationController: ObservableObject {
     @Published var phase: DictationPhase = .idle
     @Published var levels: [Float] = Array(repeating: 0, count: 14)
     @Published var lastError: String?
+    /// Onboarding's practice box: dictation still types, but isn't saved to history or counted in Insights.
+    var practiceMode = false
+    @Published var lastPracticeText: String?
 
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyManager()
@@ -160,7 +163,8 @@ final class DictationController: ObservableObject {
                 frontApp?.activate()
                 try? await Task.sleep(nanoseconds: 80_000_000)
                 TextInserter.insert(text)
-                store.history.insert(HistoryItem(date: Date(), raw: raw, text: text, duration: duration, appName: appName, bundleID: bundleID, corrected: corrected, dictFixes: dictFixes), at: 0)
+                if practiceMode { lastPracticeText = text }
+                else { store.history.insert(HistoryItem(date: Date(), raw: raw, text: text, duration: duration, appName: appName, bundleID: bundleID, corrected: corrected, dictFixes: dictFixes), at: 0) }
                 if settings.soundsEnabled { Sounds.shared.play("done") }
                 phase = .idle
             } catch {

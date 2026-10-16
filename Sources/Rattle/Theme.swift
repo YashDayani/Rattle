@@ -21,6 +21,25 @@ enum Theme {
     static let onInk = dyn(0xffffff, 0x1a1a1a)      // text and glyphs on an ink-filled control
     static let switchOff = dyn(0xc5c0b3, 0x5b5b59)
     static let heroInk = Color(red: 0.102, green: 0.102, blue: 0.102)   // dark text on the always-light controls inside hero cards
+    static let heroField = Color.white.opacity(0.95)                    // always-light inputs inside hero cards
+    static let warn = dyn(0xf28c1a, 0xf5a04a)                           // amber notices
+    static let speaker = dyn(0x3366b3, 0x7ba7e0)                        // the other party in a transcript
+
+    /// Corner-radius scale. Use these instead of literals so every surface shares one rhythm.
+    enum Radius {
+        static let xs: CGFloat = 4    // small hover chips, close buttons
+        static let sm: CGFloat = 6    // inputs, dropdowns, menu items
+        static let md: CGFloat = 8    // buttons, list rows, tooltips
+        static let lg: CGFloat = 16   // cards and panels
+        static let xl: CGFloat = 20   // hero banners
+    }
+
+    /// Shared animation curves.
+    enum Motion {
+        static let quick = Animation.easeOut(duration: 0.15)      // hover, toggles, small state changes
+        static let standard = Animation.easeOut(duration: 0.2)    // panels, sidebar, chevrons
+        static let spring = Animation.spring(response: 0.25, dampingFraction: 0.9)   // tooltips, pop-ins
+    }
 
     @MainActor static func apply(_ mode: AppearanceMode) {
         switch mode {
@@ -50,8 +69,8 @@ struct PillButton: View {
             Text(title).font(Theme.sans(13, .semibold))
                 .foregroundStyle(prominent ? Theme.onInk : Theme.ink)
                 .padding(.horizontal, 16).frame(height: 34)
-                .background(RoundedRectangle(cornerRadius: 8).fill(prominent ? Theme.ink : Theme.button))
-        }.buttonStyle(.plain).pointer()
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(prominent ? Theme.ink : Theme.button))
+        }.buttonStyle(.press).pointer()
     }
 }
 
@@ -64,7 +83,7 @@ struct ThemeSwitchStyle: ToggleStyle {
                 Circle().fill(configuration.isOn ? Theme.page : Color.white)
                     .frame(width: 21, height: 21).padding(2).offset(x: configuration.isOn ? 17 : 0)
             }
-            .animation(.easeOut(duration: 0.15), value: configuration.isOn)
+            .animation(Theme.Motion.quick, value: configuration.isOn)
             .contentShape(Capsule())
             .onTapGesture { configuration.isOn.toggle() }
             .pointer()
@@ -75,7 +94,7 @@ struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
     }
 }
 
@@ -134,7 +153,15 @@ struct LocalState<V>: DynamicProperty {
 }
 
 /// Pointing-hand cursor while the mouse is over a clickable view.
+/// macOS 15 and later use SwiftUI's own pointer style, which the hosting view applies and keeps through re-renders and animations.
+/// macOS 14 has no such API, so it pushes the cursor on hover instead.
 private struct PointerCursor: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) { content.pointerStyle(.link) } else { content.modifier(PushedPointerCursor()) }
+    }
+}
+
+private struct PushedPointerCursor: ViewModifier {
     @LocalState private var inside = false
     func body(content: Content) -> some View {
         content
@@ -149,6 +176,95 @@ private struct PointerCursor: ViewModifier {
 
 extension View {
     func pointer() -> some View { modifier(PointerCursor()) }
+    /// For views inside a floating panel that is not the key window (such as the dropdown menu), where SwiftUI's pointer style
+    /// does not take effect: pushes the pointing hand on hover instead.
+    func panelPointer() -> some View { modifier(PushedPointerCursor()) }
+}
+
+/// Plain button with a subtle press response. Pair it with `.pointer()`: `.buttonStyle(.press).pointer()`.
+struct PressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { PressBody(configuration: configuration) }
+
+    private struct PressBody: View {
+        let configuration: Configuration
+        @Environment(\.isFocused) private var focused
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.75 : 1)
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.md).strokeBorder(Theme.ink.opacity(0.4), lineWidth: 2).opacity(focused ? 1 : 0))
+                .animation(Theme.Motion.quick, value: configuration.isPressed)
+        }
+    }
+}
+
+/// Centred empty-list message: a muted glyph, a title and an optional hint. Used by every list page.
+struct EmptyState: View {
+    let icon: String
+    let title: String
+    var detail: String? = nil
+    var body: some View {
+        VStack(spacing: 6) {
+            Icon(icon, 24).foregroundStyle(Theme.muted).padding(.bottom, 4)
+            Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
+            if let detail { Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted).multilineTextAlignment(.center) }
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 48)
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+}
+extension ButtonStyle where Self == PressStyle { static var press: PressStyle { PressStyle() } }
+
+/// Dark label bubble used by every tooltip: the sidebar's, and `.tip(_:)`.
+struct TipBubble: View {
+    let text: String
+    var on = true
+    var body: some View {
+        Text(text).font(Theme.sans(12)).foregroundStyle(Theme.onInk)
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.ink))
+            .scaleEffect(on ? 1 : 0.9)
+            .opacity(on ? 1 : 0)
+            .animation(Theme.Motion.spring, value: on)
+    }
+}
+
+private struct Tip: ViewModifier {
+    let text: String
+    let edge: Edge
+    let alignEnd: Bool
+    @LocalState private var show = false
+    @LocalState private var generation = 0
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                generation += 1
+                let g = generation
+                if inside && !text.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if generation == g { show = true } }
+                } else { show = false }
+            }
+            .overlay {
+                GeometryReader { g in
+                    if edge == .trailing {
+                        TipBubble(text: text, on: show)
+                            .frame(width: g.size.width, height: g.size.height, alignment: .leading)
+                            .offset(x: g.size.width + 4)
+                    } else {
+                        TipBubble(text: text, on: show)
+                            .frame(width: g.size.width, height: g.size.height, alignment: alignEnd ? .topTrailing : .top)
+                            .offset(y: g.size.height + 4)
+                    }
+                }.allowsHitTesting(false)
+            }
+            .accessibilityLabel(text)
+            .zIndex(show ? 10 : 0)
+    }
+}
+
+extension View {
+    /// Themed tooltip after a short hover delay. `.bottom` (default) sits under the view, `.trailing` to its right. `alignEnd` right-aligns a bottom tip to the view (for controls at the window's right edge). Empty text shows nothing.
+    func tip(_ text: String, edge: Edge = .bottom, alignEnd: Bool = false) -> some View { modifier(Tip(text: text, edge: edge, alignEnd: alignEnd)) }
 }
 
 struct AppIconView: View {

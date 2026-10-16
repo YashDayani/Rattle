@@ -218,6 +218,16 @@ struct Settings: Codable, Equatable {
     /// Cloud credentials for the transcriber, or nil when transcribing locally.
     var cloudSpeech: CloudSpeech? { speechEngine == .cloud ? CloudSpeech(key: groqKey, model: groqModel) : nil }
     var cloudSpeechReady: Bool { speechEngine == .cloud && !groqKey.isEmpty }
+    /// Speech model for meeting transcripts: "" follows dictation, otherwise "local:<whisper id>" or "cloud:<groq model>".
+    var meetingSpeechModel: String = ""
+    /// The speech model and cloud credentials meeting transcription uses.
+    var meetingSpeech: (model: WhisperModel, cloud: CloudSpeech?) {
+        let dictation = WhisperModel.all.first { $0.id == model } ?? WhisperModel.all[0]
+        let parts = meetingSpeechModel.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return (dictation, cloudSpeech) }
+        if parts[0] == "cloud" { return (dictation, CloudSpeech(key: groqKey, model: parts[1])) }
+        return (WhisperModel.all.first { $0.id == parts[1] } ?? dictation, nil)
+    }
     var soundsEnabled: Bool = true
     var cleanup: CleanupLevel = .light
     var tones: [String: Tone] = [
@@ -235,6 +245,10 @@ struct Settings: Codable, Equatable {
     var llmBaseURL: String = "http://localhost:1234/v1"
     var llmModel: String = ""
     var llmKey: String = ""
+    /// Model for meeting summaries; "" uses llmModel.
+    var summaryModel: String = ""
+    /// Send the meeting recording (not the transcript) to the summary model when the AI server is Gemini.
+    var summaryFromAudio: Bool = true
     // Transforms
     var autoTransformID: String? = nil
     var commandModeEnabled: Bool = true
@@ -275,6 +289,9 @@ struct Settings: Codable, Equatable {
         llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? d.llmBaseURL
         llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? d.llmModel
         llmKey = try c.decodeIfPresent(String.self, forKey: .llmKey) ?? d.llmKey
+        summaryModel = try c.decodeIfPresent(String.self, forKey: .summaryModel) ?? d.summaryModel
+        summaryFromAudio = try c.decodeIfPresent(Bool.self, forKey: .summaryFromAudio) ?? d.summaryFromAudio
+        meetingSpeechModel = try c.decodeIfPresent(String.self, forKey: .meetingSpeechModel) ?? d.meetingSpeechModel
         autoTransformID = try c.decodeIfPresent(String.self, forKey: .autoTransformID)
         commandModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .commandModeEnabled) ?? d.commandModeEnabled
         commandShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .commandShortcut) ?? d.commandShortcut
@@ -291,7 +308,7 @@ struct Settings: Codable, Equatable {
 
     enum Keys: String, CodingKey {
         case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
-        case speechEngine, groqKey, groqModel
+        case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
         case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
         case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits
     }

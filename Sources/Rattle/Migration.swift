@@ -226,37 +226,85 @@ enum Migration {
     }
 }
 
+/// Writes Rattle's data out as one CSV per kind, in a new folder.
+@MainActor
+enum Export {
+    static func csv(from store: AppStore, into parent: URL) throws -> (folder: URL, summary: String) {
+        let stamp = DateFormatter(); stamp.dateFormat = "yyyy-MM-dd HHmm"
+        let folder = parent.appendingPathComponent("Rattle Export \(stamp.string(from: Date()))")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let iso = ISO8601DateFormatter()
+        let folderNames = Dictionary(uniqueKeysWithValues: store.folders.map { ($0.id, $0.name) })
+
+        let files: [(String, [[String]])] = [
+            ("dictations", [["id", "date", "app", "text", "raw_text", "words", "duration_seconds"]]
+                + store.history.map { [$0.id.uuidString, iso.string(from: $0.date), $0.appName, $0.text, $0.raw, "\($0.words)", String(format: "%.1f", $0.duration)] }),
+            ("meetings", [["id", "title", "date", "duration_minutes", "notes", "transcript"]]
+                + store.meetings.map { [$0.id.uuidString, $0.title, iso.string(from: $0.date), "\(Int(($0.duration / 60).rounded()))", $0.summary, NotetakerController.transcriptText($0.lines)] }),
+            ("notes", [["id", "title", "folder", "created", "updated", "pinned", "text"]]
+                + store.notes.map { [$0.id.uuidString, $0.title, $0.folderID.flatMap { folderNames[$0] } ?? "", iso.string(from: $0.created), iso.string(from: $0.updated), $0.pinned ? "yes" : "no", $0.text] }),
+            ("snippets", [["trigger", "expansion"]] + store.snippets.map { [$0.trigger, $0.expansion] }),
+            ("dictionary", [["word", "replacement"]] + store.dictionary.map { [$0.word, $0.replacement ?? ""] }),
+        ]
+        for (name, rows) in files {
+            // The byte-order mark makes Excel read the file as UTF-8.
+            try ("\u{FEFF}" + CSV.write(rows)).write(to: folder.appendingPathComponent("\(name).csv"), atomically: true, encoding: .utf8)
+        }
+        let counts = [(store.history.count, "dictation"), (store.meetings.count, "meeting"), (store.notes.count, "note"), (store.snippets.count, "snippet"), (store.dictionary.count, "dictionary word")]
+            .map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
+        return (folder, "Exported " + counts.joined(separator: ", ") + " to “\(folder.lastPathComponent)”.")
+    }
+}
+
 struct MigrationTab: View {
     @LocalState private var wisprMessage = ""
     @LocalState private var granolaMessage = ""
     @LocalState private var wisprFailed = false
     @LocalState private var granolaFailed = false
+    @LocalState private var exportMessage = ""
+    @LocalState private var exportFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Bring your history over from another app. Imports add to what's already in Rattle and skip anything you've imported before. Nothing is deleted or changed in the other app.")
-                .font(Theme.sans(13.5)).foregroundStyle(Theme.muted)
-
-            Text("WISPR FLOW").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
+            Text("IMPORT").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted)
             Card {
-                SettingRow(title: "Import from Wispr Flow", detail: Migration.wisprAvailable
-                           ? "Dictation history, dictionary, snippets, notes and meetings with transcripts, read from this Mac."
-                           : "Wispr Flow's data wasn't found on this Mac.", last: true) {
+                AppRow(logo: AppLogo(bundleID: "com.electron.wispr-flow"), title: "Wispr Flow",
+                       detail: Migration.wisprAvailable ? "History, dictionary, snippets, notes and meetings." : "Not found on this Mac.") {
                     PillButton(title: "Import", prominent: true) { importWispr() }.disabled(!Migration.wisprAvailable)
                 }
-            }
-            if !wisprMessage.isEmpty { Text(wisprMessage).font(Theme.sans(13)).foregroundStyle(wisprFailed ? .red : Theme.muted) }
-
-            Text("GRANOLA").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
-            Card {
-                SettingRow(title: "Import Granola notes", detail: "Choose the CSV export from Granola (the .zip or the .csv inside it). Each note becomes a meeting with its title, date and summary.", last: true) {
-                    PillButton(title: "Choose files…", prominent: true) { importGranola() }
+                AppRow(logo: AppLogo(bundleID: "com.granola.app"), title: "Granola", detail: "Pick the CSV you exported from Granola.", last: true) {
+                    PillButton(title: "Choose file…", prominent: true) { importGranola() }
+                        .tip("Granola encrypts its data, so export your notes as CSV in Granola first. Markdown, text and JSON notes work too.")
                 }
             }
-            if !granolaMessage.isEmpty { Text(granolaMessage).font(Theme.sans(13)).foregroundStyle(granolaFailed ? .red : Theme.muted) }
-            Text("Granola stores its own data encrypted on disk, so Rattle can't read it directly. In Granola, export your notes as CSV, then pick the file here. Single Markdown, text or JSON notes work too.")
-                .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
+            status(wisprMessage, failed: wisprFailed)
+            status(granolaMessage, failed: granolaFailed)
+
+            Text("EXPORT").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
+            Card {
+                AppRow(logo: AppLogo(symbol: "square.and.arrow.up"), title: "Export as CSV", detail: "All your Rattle data, one file per type.", last: true) {
+                    PillButton(title: "Export…", prominent: true) { exportCSV() }
+                }
+            }
+            status(exportMessage, failed: exportFailed)
         }
+    }
+
+    @ViewBuilder private func status(_ message: String, failed: Bool) -> some View {
+        if !message.isEmpty { Text(message).font(Theme.sans(13)).foregroundStyle(failed ? .red : Theme.muted) }
+    }
+
+    private func exportCSV() {
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
+        p.prompt = "Export Here"; p.message = "Choose where to save the Rattle export folder"
+        p.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard p.runModal() == .OK, let dir = p.url else { return }
+        do {
+            let r = try Export.csv(from: AppStore.shared, into: dir)
+            exportMessage = r.summary; exportFailed = false
+            NSWorkspace.shared.activateFileViewerSelecting([r.folder])
+        } catch { exportMessage = "Couldn't export: \(error.localizedDescription)"; exportFailed = true }
     }
 
     private func importWispr() {
@@ -279,5 +327,44 @@ struct MigrationTab: View {
         }
         do { granolaMessage = try Migration.importGranola(files: files, into: AppStore.shared).summary; granolaFailed = false }
         catch { granolaMessage = error.localizedDescription; granolaFailed = true }
+    }
+}
+
+/// A settings row led by an app's logo.
+private struct AppRow<Trailing: View>: View {
+    let logo: AppLogo
+    let title: String
+    let detail: String
+    var last = false
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                logo
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
+                    Text(detail).font(Theme.sans(14)).foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 16)
+                trailing
+            }.padding(.horizontal, 20).padding(.vertical, 14)
+            if !last { Divider().overlay(Theme.line).padding(.horizontal, 20) }
+        }
+    }
+}
+
+/// The installed app's own icon, or a plain icon tile when the app isn't on this Mac.
+private struct AppLogo: View {
+    var bundleID: String? = nil
+    var symbol = "square.and.arrow.down"
+    var body: some View {
+        if let id = bundleID, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().interpolation(.high).frame(width: 36, height: 36)
+        } else {
+            Icon(symbol, 18).foregroundStyle(Theme.ink)
+                .frame(width: 36, height: 36)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.panel))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.md).stroke(Theme.line))
+        }
     }
 }

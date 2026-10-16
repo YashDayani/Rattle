@@ -1,7 +1,7 @@
 import SwiftUI
 import Cocoa
 
-// The "powerplug" (MCP) icon is a stroked redraw of the Model Context Protocol mark, drawn to match Lucide.
+// The "powerplug" (MCP) icon is mcp-server from Hugeicons (https://hugeicons.com), MIT License, Copyright (c) 2025 Hugeicons.
 // Icons are from Lucide (https://lucide.dev), ISC License, Copyright (c) Lucide Icons and Contributors.
 // Some are derived from Feather, MIT License, Copyright (c) 2013-present Cole Bemis.
 // Full notices: scripts/lucide-LICENSE.txt (copied into the app bundle by scripts/build.sh).
@@ -58,7 +58,7 @@ enum Lucide {
         "checkmark.circle.fill": #"<circle cx="12" cy="12" r="10" /><path d="m16 9-5.5 5.5L8 12" />"#,   // circle-check
         "checkmark.square.fill": #"<rect width="18" height="18" x="3" y="3" rx="2" /><path d="m16 9-5.5 5.5L8 12" />"#,   // square-check
         "chevron.up": #"<path d="m18 15-6-6-6 6" />"#,   // chevron-up
-        "powerplug": #"<path d="m3.5 12.5 7.6-7.6a2.6 2.6 0 0 1 3.7 3.7l-6.6 6.6" /><path d="m9.5 17.4 7.6-7.6a2.6 2.6 0 0 1 3.7 3.7l-7.2 7.2a.8.8 0 0 0 0 1.1" /><path d="m12.5 7.4-5.2 5.2" />"#,   // mcp, stroked to match Lucide
+        "powerplug": #"<path d="M3.49994 11.7501L11.6717 3.57855C12.7762 2.47398 14.5672 2.47398 15.6717 3.57855C16.7762 4.68312 16.7762 6.47398 15.6717 7.57855M15.6717 7.57855L9.49994 13.7501M15.6717 7.57855C16.7762 6.47398 18.5672 6.47398 19.6717 7.57855C20.7762 8.68312 20.7762 10.474 19.6717 11.5785L12.7072 18.543C12.3167 18.9335 12.3167 19.5667 12.7072 19.9572L13.9999 21.2499" /><path d="M17.4999 9.74921L11.3282 15.921C10.2237 17.0255 8.43272 17.0255 7.32822 15.921C6.22373 14.8164 6.22373 13.0255 7.32822 11.921L13.4999 5.74939" />"#,   // mcp-server (Hugeicons)
         "sparkle": #"<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />"#,   // sparkle
         "pin": #"<path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />"#,   // pin
         "pin.slash": #"<path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />"#,   // pin-off

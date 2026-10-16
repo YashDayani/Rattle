@@ -29,4 +29,14 @@ enum CSV {
         guard let header = rows.first else { return [] }
         return rows.dropFirst().map { r in Dictionary(uniqueKeysWithValues: header.enumerated().map { ($1, $0 < r.count ? r[$0] : "") }) }
     }
+
+    /// One RFC 4180 document: fields are quoted when they hold commas, quotes or newlines.
+    static func write(_ rows: [[String]]) -> String {
+        rows.map { $0.map(escape).joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
+    }
+
+    private static func escape(_ field: String) -> String {
+        guard field.contains(where: { $0 == "," || $0 == "\"" || $0.isNewline }) else { return field }
+        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
 }

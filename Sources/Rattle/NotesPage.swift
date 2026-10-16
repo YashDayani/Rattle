@@ -83,12 +83,7 @@ struct NotesPage: View {
     }
 
     private func empty(title: String, detail: String?) -> some View {
-        VStack(spacing: 6) {
-            Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
-            if let detail { Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted) }
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 48)
-        .frame(maxHeight: .infinity, alignment: .top)
+        EmptyState(icon: store.notes.isEmpty && store.folders.isEmpty ? "note.text" : "magnifyingglass", title: title, detail: detail)
     }
 
     // MARK: Actions
@@ -168,10 +163,10 @@ struct NoteTool: View {
         Button(action: action) {
             Icon(icon, 16).foregroundStyle(hover ? (destructive ? Color.red : Theme.ink) : Theme.muted)
                 .frame(width: 28, height: 28)
-                .background(RoundedRectangle(cornerRadius: 6).fill(hover ? Theme.card : .clear))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(hover ? Theme.card : .clear))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).pointer().help(help).onHover { hover = $0 }
+        .buttonStyle(.press).pointer().tip(help).onHover { hover = $0 }
     }
 }
 
@@ -193,8 +188,8 @@ private struct FolderTile: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 150)
-        .background(RoundedRectangle(cornerRadius: 12).fill(targeted ? Theme.card : Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(targeted ? Theme.ink.opacity(0.4) : Theme.line))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(targeted ? Theme.card : Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).strokeBorder(targeted ? Theme.ink.opacity(0.4) : Theme.line))
         .contentShape(Rectangle())
         .onTapGesture(perform: open)
         .dropDestination(for: String.self, action: { items, _ in items.first.map(drop) ?? false }, isTargeted: { targeted = $0 })
@@ -239,8 +234,8 @@ private struct NoteCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 150)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).strokeBorder(Theme.line))
         .contentShape(Rectangle())
         .onTapGesture(perform: open)
         .draggable(note.id.uuidString)
@@ -263,13 +258,13 @@ private struct NoteCard: View {
                 Rectangle().fill(Theme.line).frame(width: 1, height: 28)
                 NoteTool(icon: "trash", help: "Delete", destructive: true, action: delete)
             }
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.panel))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(Theme.panel))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).strokeBorder(Theme.line))
             .shadow(color: .black.opacity(0.1), radius: 3, y: 2)
             .padding(8)
             .opacity(hover ? 1 : 0)
-            .animation(.easeOut(duration: 0.2), value: hover)
+            .animation(Theme.Motion.standard, value: hover)
         }
         .onHover { hover = $0 }
         .pointer()
@@ -297,7 +292,7 @@ private struct NoteEditor: View {
                         Text("Notes").font(Theme.sans(15, .medium))
                     }
                     .foregroundStyle(Theme.ink).padding(.trailing, 8).frame(height: 28).contentShape(Rectangle())
-                }.buttonStyle(.plain).pointer()
+                }.buttonStyle(.press).pointer()
                 Spacer()
                 Text("Edited \(note.updatedLabel)").font(Theme.sans(12)).foregroundStyle(Theme.muted).padding(.trailing, 8)
                 NoteTool(icon: preview ? "pencil" : "eye", help: preview ? "Edit Markdown (⌘E)" : "Preview Markdown (⌘E)") { preview.toggle() }
@@ -325,7 +320,7 @@ private struct NoteEditor: View {
                         Text("Start typing, or hold")
                         Text(store.settings.shortcut.title).font(Theme.sans(12, .medium))
                             .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 20)
-                            .background(RoundedRectangle(cornerRadius: 4).fill(Theme.card))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(Theme.card))
                         Text("to dictate. The first line is the title.")
                     }
                     .font(Theme.sans(16)).foregroundStyle(Theme.switchOff)

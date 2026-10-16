@@ -95,7 +95,7 @@ struct MarkdownLite: View {
             HStack(spacing: 10) { RoundedRectangle(cornerRadius: 1.5).fill(Theme.muted.opacity(0.4)).frame(width: 3); inline(t).foregroundStyle(Theme.muted) }.fixedSize(horizontal: false, vertical: true)
         case .code(let c):
             Text(c).font(.system(size: 12.5, design: .monospaced)).foregroundStyle(Theme.ink).padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading).background(RoundedRectangle(cornerRadius: 8).fill(Theme.card))
+                .frame(maxWidth: .infinity, alignment: .leading).background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.card))
         case .table(let rows):
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { r, cells in
@@ -132,7 +132,7 @@ struct NotetakerPage: View {
             PageHeader(title: "Meetings", subtitle: "Records your mic and the call audio, then writes the notes.") {
                 HStack(spacing: 10) {
                     Button { Router.shared.openSettings(.notetaker) } label: { Icon("gearshape", 18) }
-                        .buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
+                        .buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
                     recordButton
                 }
             }
@@ -141,8 +141,8 @@ struct NotetakerPage: View {
                     Icon("exclamationmark.triangle.fill", 16).foregroundStyle(.orange)
                     Text(w).font(Theme.sans(13)).foregroundStyle(Theme.ink)
                     Spacer()
-                    Button { nt.warning = nil } label: { Icon("xmark", 14) }.buttonStyle(.plain).pointer()
-                }.padding(12).background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.1)))
+                    Button { nt.warning = nil } label: { Icon("xmark", 14) }.buttonStyle(.press).pointer()
+                }.padding(12).background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.warn.opacity(0.1)))
             }
             HStack(alignment: .top, spacing: 18) {
                 main.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -164,8 +164,8 @@ struct NotetakerPage: View {
             }
             .font(Theme.sans(13, .semibold)).foregroundStyle(nt.state == .idle ? Theme.ink : Theme.onInk)
             .padding(.horizontal, 16).frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 9).fill(nt.state == .idle ? Theme.button : Theme.ink))
-        }.buttonStyle(.plain).pointer().disabled(nt.state == .finishing)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(nt.state == .idle ? Theme.button : Theme.ink))
+        }.buttonStyle(.press).pointer().disabled(nt.state == .finishing)
     }
 
     @ViewBuilder private var main: some View {
@@ -197,7 +197,7 @@ struct NotetakerPage: View {
                 .onChange(of: nt.liveLines.count) { _ in if let last = nt.liveLines.last { proxy.scrollTo(last.id, anchor: .bottom) } }
             }
         }
-        .padding(18).background(RoundedRectangle(cornerRadius: 14).fill(Theme.card))
+        .padding(18).background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
     }
 
     private func detail(_ m: Meeting) -> some View {
@@ -231,7 +231,7 @@ struct NotetakerPage: View {
             Button { player.toggle(m) } label: {
                 Icon(active && player.playing ? "pause.fill" : "play.fill", 14).foregroundStyle(Theme.onInk)
                     .frame(width: 30, height: 30).background(Circle().fill(Theme.ink))
-            }.buttonStyle(.plain).pointer()
+            }.buttonStyle(.press).pointer()
             Text(NotetakerController.timestamp(active ? player.time : 0)).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.muted)
             Slider(value: Binding(get: { active ? player.time : 0 }, set: { t in if active { player.seek(to: t) } else { player.play(m, from: t) } }), in: 0...max(total, 1))
                 .controlSize(.small).tint(Theme.ink)
@@ -245,10 +245,10 @@ struct NotetakerPage: View {
                     Icon(downloadedID == m.id ? "checkmark" : "square.and.arrow.down", 15)
                     Text(downloadedID == m.id ? "Saved to Downloads" : "Download").font(Theme.sans(12.5, .medium))
                 }.foregroundStyle(Theme.muted)
-            }.buttonStyle(.plain).pointer().help("Save a copy of the recording to your Downloads folder")
+            }.buttonStyle(.press).pointer().tip("Save a copy of the recording to your Downloads folder")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
     }
 
     @ViewBuilder private func notes(_ m: Meeting) -> some View {
@@ -257,6 +257,9 @@ struct NotetakerPage: View {
         } else if !m.summary.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 MarkdownLite(text: m.summary)
+                if let e = m.summaryError {
+                    Text("Couldn't regenerate: \(e)").font(Theme.sans(13)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
                 PillButton(title: "Regenerate") { Task { await nt.summarize(m.id) } }
             }
         } else {
@@ -282,9 +285,9 @@ struct NotetakerPage: View {
                             Text(m.date.formatted(date: .abbreviated, time: .shortened)).font(Theme.sans(11.5)).foregroundStyle(Theme.muted)
                         }
                         .foregroundStyle(Theme.ink).frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(nt.selectedID == m.id && nt.state == .idle ? Theme.selected : .clear))
+                        .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(nt.selectedID == m.id && nt.state == .idle ? Theme.selected : .clear))
                         .contentShape(Rectangle())
-                    }.buttonStyle(.plain).pointer()
+                    }.buttonStyle(.press).pointer()
                 }
             }
         }
@@ -296,14 +299,14 @@ struct NotetakerPage: View {
             if nt.asking { HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Thinking…").font(Theme.sans(13)).foregroundStyle(Theme.muted) } }
             else if let a = nt.answer {
                 ScrollView { MarkdownLite(text: a).padding(14) }.frame(maxHeight: 150)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
-                    .overlay(alignment: .topTrailing) { Button { nt.answer = nil } label: { Icon("xmark", 12) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).padding(8) }
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
+                    .overlay(alignment: .topTrailing) { Button { nt.answer = nil } label: { Icon("xmark", 12) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted).padding(8) }
             }
             HStack {
                 TextField("What are my action items this week?", text: $question).textFieldStyle(.plain).font(Theme.sans(14))
                     .onSubmit { let q = question; question = ""; Task { await nt.ask(q) } }
                 Button { let q = question; question = ""; Task { await nt.ask(q) } } label: { Icon("arrow.up.circle.fill", 28) }
-                    .buttonStyle(.plain).pointer().foregroundStyle(question.isEmpty ? Theme.muted.opacity(0.5) : Theme.ink).disabled(question.isEmpty)
+                    .buttonStyle(.press).pointer().foregroundStyle(question.isEmpty ? Theme.muted.opacity(0.5) : Theme.ink).disabled(question.isEmpty)
             }
             .padding(.horizontal, 18).frame(height: 46)
             .background(Capsule().fill(Theme.card))
@@ -311,7 +314,7 @@ struct NotetakerPage: View {
     }
 
     private func iconButton(_ name: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Icon(name, 16) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
+        Button(action: action) { Icon(name, 16) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
     }
     private func copy(_ s: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(s, forType: .string) }
 }
@@ -323,9 +326,9 @@ struct TranscriptRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if let onSeek {
-                Button { onSeek(line.time) } label: { stamp.underline() }.buttonStyle(.plain).pointer().help("Play from here")
+                Button { onSeek(line.time) } label: { stamp.underline() }.buttonStyle(.press).pointer().tip("Play from here")
             } else { stamp }
-            Text(line.speaker).font(Theme.sans(12.5, .semibold)).foregroundStyle(line.speaker == "You" ? Theme.ink : Color(red: 0.2, green: 0.4, blue: 0.7)).frame(width: 52, alignment: .leading)
+            Text(line.speaker).font(Theme.sans(12.5, .semibold)).foregroundStyle(line.speaker == "You" ? Theme.ink : Theme.speaker).frame(width: 52, alignment: .leading)
             Text(line.text).font(Theme.sans(14)).foregroundStyle(Theme.ink).textSelection(.enabled)
         }
     }

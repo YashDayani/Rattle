@@ -47,19 +47,19 @@ struct TransformsPage: View {
                             }
                             Spacer()
                             if !t.builtIn {
-                                Button { editing = t; isNew = false } label: { Icon("pencil", 16) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
-                                Button { store.customTransforms.removeAll { $0.id == t.id }; if store.settings.autoTransformID == t.id { store.settings.autoTransformID = nil } } label: { Icon("trash", 16) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
+                                Button { editing = t; isNew = false } label: { Icon("pencil", 16) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
+                                Button { store.customTransforms.removeAll { $0.id == t.id }; if store.settings.autoTransformID == t.id { store.settings.autoTransformID = nil } } label: { Icon("trash", 16) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
                             }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 12).overlay(alignment: .bottom) { Divider().overlay(Theme.line) }
                     }
-                }.background(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+                }.background(RoundedRectangle(cornerRadius: Theme.Radius.lg).stroke(Theme.line))
 
                 Text("Try it").font(Theme.sans(13, .semibold)).foregroundStyle(Theme.muted).padding(.top, 6)
                 Card {
                     VStack(alignment: .leading, spacing: 12) {
                         TextEditor(text: $testInput).font(Theme.sans(14)).scrollContentBackground(.hidden).frame(height: 90).padding(8)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.panel))
                             .overlay(alignment: .topLeading) { if testInput.isEmpty { Text("Paste or type some text…").font(Theme.sans(14)).foregroundStyle(Theme.muted).padding(14).allowsHitTesting(false) } }
                         HStack {
                             Dropdown(selection: $testID, options: store.allTransforms.map { ($0.id, $0.name) }, width: 200)
@@ -70,7 +70,7 @@ struct TransformsPage: View {
                         if !testOutput.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(testOutput).font(Theme.sans(14)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12).background(RoundedRectangle(cornerRadius: 9).fill(Theme.panel))
+                                    .padding(12).background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.panel))
                                 PillButton(title: "Copy polished text") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(testOutput, forType: .string) }
                             }
                         }
@@ -100,7 +100,7 @@ struct TransformsPage: View {
             Text(status == "ok" ? "AI model connected" : (status ?? "Checking AI server…")).font(Theme.sans(13)).foregroundStyle(Theme.ink)
             Spacer()
             PillButton(title: "AI settings") { Router.shared.openSettings(.ai) }
-        }.padding(.horizontal, 16).frame(height: 46).background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+        }.padding(.horizontal, 16).frame(height: 46).background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
     }
 
     private func checkAI() {
@@ -140,7 +140,7 @@ struct TransformSheet: View {
             Text(isNew ? "New transform" : "Edit transform").font(Theme.serif(24))
             TextField("Name (e.g. Slack reply)", text: $name).textFieldStyle(.roundedBorder)
             Text("Instruction").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
-            TextEditor(text: $prompt).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
+            TextEditor(text: $prompt).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).stroke(Theme.line))
             Text("Describe how the text should change. Rattle sends your text plus this instruction to your AI model.").font(Theme.sans(12)).foregroundStyle(Theme.muted)
             HStack { Spacer(); PillButton(title: "Cancel", action: cancel)
                 PillButton(title: "Save", prominent: true) { save(Transform(id: id, name: name, prompt: prompt)) }.disabled(name.isEmpty || prompt.isEmpty) }

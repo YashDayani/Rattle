@@ -292,9 +292,9 @@ final class NotetakerController: ObservableObject {
         for (samples, speaker) in [(m, "You"), (s, "Others")] {
             guard samples.count > 16000, Self.rms(samples) > 0.004 else { continue }
             let settings = store.settings
-            let model = WhisperModel.all.first { $0.id == settings.model } ?? WhisperModel.all[0]
-            guard let raw = try? await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: store.dictionary.map { $0.replacement ?? $0.word }, cloud: settings.cloudSpeech) else {
-                warning = settings.speechEngine == .cloud ? "Transcription failed. Check your Groq key and connection in Settings → Model." : "Transcription failed. Check the speech model in Settings → Model."
+            let speech = settings.meetingSpeech
+            guard let raw = try? await Transcriber.transcribe(samples: samples, model: speech.model, language: settings.language, vocabulary: store.dictionary.map { $0.replacement ?? $0.word }, cloud: speech.cloud) else {
+                warning = speech.cloud != nil ? "Transcription failed. Check your Groq key and connection in Settings → Model." : "Transcription failed. Check the meeting transcription model in Settings → AI."
                 continue
             }
             let text = Self.clean(raw)
@@ -359,21 +359,30 @@ final class NotetakerController: ObservableObject {
         guard let idx = store.meetings.firstIndex(where: { $0.id == id }) else { return }
         summarizingID = id
         defer { summarizingID = nil }
-        let transcript = Self.transcriptText(store.meetings[idx].lines)
+        let settings = store.settings
+        // Gemini can listen to the recording itself; otherwise summarize the transcript.
+        let audio = settings.summaryFromAudio && GeminiAudio.supports(settings) ? store.meetings[idx].audioURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } : nil
+        let source = audio == nil ? "meeting transcript" : "meeting recording"
+        let speakers = audio == nil ? " \"You\" is the person who recorded; \"Others\" are the remote participants (not separated by person)." : " Tell speakers apart by voice where you can, and use names only when they are said aloud."
         let system = """
-        You write concise, accurate meeting notes from a transcript. "You" is the person who recorded; "Others" are the remote participants (not separated by person).
-        Output Markdown in exactly this shape:
-        # <short title, max 8 words>
-        ## Summary
-        - 3 to 6 bullets
-        ## Decisions
-        - bullets, or "None noted"
-        ## Action items
-        - [ ] item (owner if stated)
-        Use only what is in the transcript. Do not invent names, dates or commitments.
+        Act as an expert technical project manager and generate a comprehensive, categorized summary of the provided \(source).\(speakers)
+        Follow these strict formatting and style guidelines:
+        * Title: The very first line must be `# <short title, max 8 words>`. Nothing comes before it.
+        * Categorized Headings: Group the discussion points under 3 to 5 relevant thematic Markdown headings (`##`) based on the meeting's content (e.g., System Architecture, Workflow Decisions, Client Updates, Marketing Strategy).
+        * Bullet Points: Use bullet points for all insights and updates under each heading.
+        * Concrete & Direct Content: Write concise, high-density sentences. Explicitly state specific client names, exact financial figures, technical tools, UI/UX changes, and explicit decisions made. Do not use florid adjectives or vague, high-level summaries.
+        * Zero Fluff: Do not include any introductory setups, greetings, or summary conclusions (e.g., do not start with "Here is the summary of the meeting"). After the title, lead immediately with the first heading.
+        * Complete Coverage: Ensure all technical blockers, system rules, business metrics, and workflow optimizations discussed are thoroughly captured without padding.
+        Use only what is in the \(source). Do not invent names, figures, dates or commitments. If little was discussed, keep the summary short.
         """
         do {
-            let out = try await LLM.chat(system: system, user: String(transcript.prefix(24000)), settings: store.settings, maxTokens: 900, timeout: 180)
+            let out: String
+            if let audio {
+                out = try await GeminiAudio.summarize(audio: audio, system: system, prompt: "Summarize this meeting recording.", settings: settings, model: settings.summaryModel, maxTokens: 2000, timeout: 600)
+            } else {
+                let transcript = Self.transcriptText(store.meetings[idx].lines)
+                out = try await LLM.chat(system: system, user: String(transcript.prefix(24000)), settings: settings, model: settings.summaryModel, maxTokens: 2000, timeout: 240)
+            }
             guard let i = store.meetings.firstIndex(where: { $0.id == id }) else { return }
             var body = out
             if let first = out.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true).first, first.hasPrefix("# ") {

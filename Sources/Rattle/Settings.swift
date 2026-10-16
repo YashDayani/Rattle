@@ -27,11 +27,7 @@ struct SettingsModal: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    AppIconView(size: 22)
-                    Text("Rattle").font(.system(size: 15, weight: .semibold, design: .rounded))
-                }.padding(.leading, 10).padding(.bottom, 14)
-                Text("SETTINGS").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.leading, 12).padding(.bottom, 8)
+                Text("Settings").font(Theme.sans(20, .semibold)).foregroundStyle(Theme.ink).padding(.leading, 12).padding(.top, 6).padding(.bottom, 16)
                 ForEach(SettingsTab.allCases) { t in
                     Button { tab = t } label: {
                         HStack(spacing: 10) {
@@ -39,9 +35,9 @@ struct SettingsModal: View {
                             Text(t.rawValue).font(Theme.sans(14, .medium))
                             Spacer()
                         }.foregroundStyle(Theme.ink).padding(.horizontal, 12).frame(height: 36)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(tab == t ? Theme.selected : .clear))
+                            .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(tab == t ? Theme.selected : .clear))
                             .contentShape(Rectangle())
-                    }.buttonStyle(.plain).pointer()
+                    }.buttonStyle(.press).pointer()
                 }
                 Spacer()
                 Text("Rattle v1.0").font(Theme.sans(11)).foregroundStyle(Theme.muted).padding(.leading, 12)
@@ -52,7 +48,7 @@ struct SettingsModal: View {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack {
                         Text(tab.rawValue).font(Theme.serif(28)).tracking(-1.1); Spacer()
-                        Button(action: close) { Icon("xmark", 15) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
+                        Button(action: close) { Icon("xmark", 15) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
                     }
                     switch tab {
                     case .general: GeneralTab()
@@ -68,7 +64,7 @@ struct SettingsModal: View {
             }.background(Theme.panel)
         }
         .frame(width: 960, height: 640)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
         .shadow(color: .black.opacity(0.25), radius: 30, y: 10)
     }
 }
@@ -158,10 +154,10 @@ struct ModelTab: View {
                 Icon(on ? "checkmark.circle.fill" : "circle", 18).foregroundStyle(on ? Theme.ink : Theme.switchOff)
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(on ? Theme.ink : Theme.line, lineWidth: on ? 1.5 : 1))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).strokeBorder(on ? Theme.ink : Theme.line, lineWidth: on ? 1.5 : 1))
             .contentShape(Rectangle())
-        }.buttonStyle(.plain).pointer()
+        }.buttonStyle(.press).pointer()
     }
 
     private func select(_ engine: SpeechEngine) {
@@ -253,7 +249,7 @@ struct NotetakerTab: View {
                     Toggle("", isOn: $store.settings.notetakerSummaries).toggleStyle(ThemeSwitchStyle()).labelsHidden()
                 }
             }
-            Text("Transcription uses your on-device speech model. Only the transcript text is sent to your AI model, and with a local model it never leaves this Mac.")
+            Text("Choose the transcription and summary models in Settings → AI. Only the transcript text is sent to your AI model, and with a local model it never leaves this Mac.")
                 .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
         }
     }
@@ -301,10 +297,37 @@ struct AITab: View {
                 PillButton(title: testing ? "Testing…" : "Test connection", prominent: true) { test() }.disabled(testing)
                 Text(status).font(Theme.sans(13)).foregroundStyle(status.hasPrefix("Connected") ? .green : Theme.muted)
             }
+            Text("Meetings").font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink).padding(.top, 6)
+            Card {
+                SettingRow(title: "Transcription model", detail: "Speech model that writes meeting transcripts. Cloud models need a Groq key in Settings → Model.") {
+                    Dropdown(selection: $store.settings.meetingSpeechModel, options: speechOptions, width: 260)
+                }
+                SettingRow(title: "Summary model", detail: store.settings.summaryModel.isEmpty ? "Uses the model above." : "Writes meeting notes. Transforms keep using the model above.") {
+                    Dropdown(selection: $store.settings.summaryModel,
+                             options: [("", "Same as AI model")]
+                                + (!store.settings.summaryModel.isEmpty && !models.contains(store.settings.summaryModel) ? [(store.settings.summaryModel, store.settings.summaryModel)] : [])
+                                + models.map { ($0, $0) },
+                             width: 260)
+                }
+                SettingRow(title: "Summarize from audio", detail: GeminiAudio.supports(store.settings)
+                           ? "Sends the meeting recording to Gemini instead of the transcript. Needs Keep the recording on in Settings → Meetings; meetings without a recording use the transcript."
+                           : "Only works with Gemini. Other AI servers summarize the transcript.", last: true) {
+                    Toggle("", isOn: $store.settings.summaryFromAudio).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                }
+            }
             Text("Running LM Studio? Start its server from the Developer tab or with: lms server start")
                 .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
         }
         .onAppear { test() }
+    }
+
+    private var speechOptions: [(value: String, title: String)] {
+        let dictation = store.settings.speechEngine == .cloud
+            ? CloudSpeech.models.first { $0.id == store.settings.groqModel }?.title ?? store.settings.groqModel
+            : WhisperModel.all.first { $0.id == store.settings.model }?.title ?? store.settings.model
+        return [("", "Same as dictation (\(dictation))")]
+            + WhisperModel.all.map { ("local:\($0.id)", "Local · \($0.title)" + ($0.installed ? "" : " (not downloaded)")) }
+            + CloudSpeech.models.map { ("cloud:\($0.id)", "Groq · \($0.title)") }
     }
 
     private func preset(_ name: String, _ url: String) -> some View {

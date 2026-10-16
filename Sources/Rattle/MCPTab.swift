@@ -96,52 +96,57 @@ struct MCPTab: View {
                 .font(Theme.sans(13.5)).foregroundStyle(Theme.muted)
 
             Card {
-                SettingRow(title: "Enable MCP server", detail: "When off, connected apps see no tools.", last: false) {
-                    Toggle("", isOn: $store.settings.mcpEnabled).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                SettingRow(title: "Enable MCP server", detail: "When off, connected apps see no tools.", last: !store.settings.mcpEnabled) {
+                    Toggle("", isOn: $store.settings.mcpEnabled.animation(Theme.Motion.standard)).toggleStyle(ThemeSwitchStyle()).labelsHidden()
                 }
-                SettingRow(title: "Notes", detail: "list_notes, get_note", last: false) {
-                    Toggle("", isOn: $store.settings.mcpNotes).toggleStyle(ThemeSwitchStyle()).labelsHidden()
-                }
-                SettingRow(title: "Meetings", detail: "Transcripts and AI summaries: list_meetings, get_meeting", last: false) {
-                    Toggle("", isOn: $store.settings.mcpMeetings).toggleStyle(ThemeSwitchStyle()).labelsHidden()
-                }
-                SettingRow(title: "Dictation history", detail: "list_dictations", last: false) {
-                    Toggle("", isOn: $store.settings.mcpDictations).toggleStyle(ThemeSwitchStyle()).labelsHidden()
-                }
-                SettingRow(title: "Snippets", detail: "list_snippets", last: false) {
-                    Toggle("", isOn: $store.settings.mcpSnippets).toggleStyle(ThemeSwitchStyle()).labelsHidden()
-                }
-                SettingRow(title: "Allow edits", detail: "Let connected apps create, rename, edit and delete notes and meetings. Deletes can't be undone.", last: true) {
-                    Toggle("", isOn: $store.settings.mcpAllowEdits).toggleStyle(ThemeSwitchStyle()).labelsHidden()
-                }
-            }
-
-            Text("CONNECT").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
-            Card {
-                ForEach(Array(MCPClient.all.enumerated()), id: \.element.id) { i, c in
-                    SettingRow(title: c.name, detail: detail(c), last: i == MCPClient.all.count - 1) {
-                        if c.connected { PillButton(title: "Disconnect") { run(c) { try c.disconnect() } } }
-                        else { PillButton(title: c.registeredCommand == nil ? "Connect" : "Update", prominent: true) { run(c) { try c.connect() } } }
+                // What connected apps can reach, and how to connect them, only matters while the server is on.
+                if store.settings.mcpEnabled {
+                    SettingRow(title: "Notes", detail: "list_notes, get_note", last: false) {
+                        Toggle("", isOn: $store.settings.mcpNotes).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                    }
+                    SettingRow(title: "Meetings", detail: "Transcripts and AI summaries: list_meetings, get_meeting", last: false) {
+                        Toggle("", isOn: $store.settings.mcpMeetings).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                    }
+                    SettingRow(title: "Dictation history", detail: "list_dictations", last: false) {
+                        Toggle("", isOn: $store.settings.mcpDictations).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                    }
+                    SettingRow(title: "Snippets", detail: "list_snippets", last: false) {
+                        Toggle("", isOn: $store.settings.mcpSnippets).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+                    }
+                    SettingRow(title: "Allow edits", detail: "Let connected apps create, rename, edit and delete notes and meetings. Deletes can't be undone.", last: true) {
+                        Toggle("", isOn: $store.settings.mcpAllowEdits).toggleStyle(ThemeSwitchStyle()).labelsHidden()
                     }
                 }
             }
-            if !message.isEmpty { Text(message).font(Theme.sans(13)).foregroundStyle(Theme.muted) }
 
-            Text("OTHER APPS").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
-            Card {
-                SettingRow(title: "Config JSON", detail: "Paste into any app that supports MCP servers.", last: false) {
-                    PillButton(title: copied == "json" ? "Copied" : "Copy") { copy(MCPSetup.configSnippet, "json") }
+            if store.settings.mcpEnabled {
+                Text("CONNECT").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
+                Card {
+                    ForEach(Array(MCPClient.all.enumerated()), id: \.element.id) { i, c in
+                        SettingRow(title: c.name, detail: detail(c), last: i == MCPClient.all.count - 1) {
+                            if c.connected { PillButton(title: "Disconnect") { run(c) { try c.disconnect() } } }
+                            else { PillButton(title: c.registeredCommand == nil ? "Connect" : "Update", prominent: true) { run(c) { try c.connect() } } }
+                        }
+                    }
                 }
-                SettingRow(title: "Claude Code", detail: "Copy a one-line command to run in your terminal.", last: true) {
-                    PillButton(title: copied == "cc" ? "Copied" : "Copy") { copy(MCPSetup.claudeCodeCommand, "cc") }
+                if !message.isEmpty { Text(message).font(Theme.sans(13)).foregroundStyle(Theme.muted) }
+
+                Text("OTHER APPS").font(Theme.sans(11, .semibold)).foregroundStyle(Theme.muted).padding(.top, 4)
+                Card {
+                    SettingRow(title: "Config JSON", detail: "Paste into any app that supports MCP servers.", last: false) {
+                        PillButton(title: copied == "json" ? "Copied" : "Copy") { copy(MCPSetup.configSnippet, "json") }
+                    }
+                    SettingRow(title: "Claude Code", detail: "Copy a one-line command to run in your terminal.", last: true) {
+                        PillButton(title: copied == "cc" ? "Copied" : "Copy") { copy(MCPSetup.claudeCodeCommand, "cc") }
+                    }
                 }
+                Text(MCPSetup.configSnippet)
+                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.ink).textSelection(.enabled)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.card))
+                Text("Restart the app after connecting. If you move or rename Rattle, connect again so the path stays correct.")
+                    .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
             }
-            Text(MCPSetup.configSnippet)
-                .font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.ink).textSelection(.enabled)
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.card))
-            Text("Restart the app after connecting. If you move or rename Rattle, connect again so the path stays correct.")
-                .font(Theme.sans(12.5)).foregroundStyle(Theme.muted)
         }
     }
 

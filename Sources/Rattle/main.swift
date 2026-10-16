@@ -2,8 +2,10 @@ import Cocoa
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var hub: NSWindow?
+    /// Smallest window size at which every page still lays out cleanly.
+    static let hubMinSize = NSSize(width: 1135, height: 740)
     var flowBar = FlowBarWindow()
     var statusItem: NSStatusItem?
 
@@ -47,7 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.toolbar = NSToolbar(identifier: "hub")
             w.toolbar?.showsBaselineSeparator = false
             w.toolbarStyle = .unified
-            w.minSize = NSSize(width: 1040, height: 700)
             if let vis = NSScreen.main?.visibleFrame {
                 var f = w.frame
                 f.size.width = min(f.width, vis.width - 40); f.size.height = min(f.height, vis.height - 20)
@@ -62,10 +63,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // (Relying on ignoresSafeArea left a strip uncovered whenever a page was taller than the area below the title bar.)
             host.safeAreaRegions = []
             w.contentView = host
-            w.backgroundColor = NSColor(Theme.window)
-            w.contentMinSize = NSSize(width: 960, height: 560)
+            // Transparent so HubView can round the corners past what macOS draws; the shadow follows the drawn shape.
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.minSize = Self.hubMinSize
+            w.delegate = self
             w.center()
             w.setFrameAutosaveName("RattleHub2")
+            // A frame saved before the minimum existed can be smaller than it.
+            if w.frame.width < Self.hubMinSize.width || w.frame.height < Self.hubMinSize.height {
+                var f = w.frame
+                f.size = NSSize(width: max(f.width, Self.hubMinSize.width), height: max(f.height, Self.hubMinSize.height))
+                f.origin.y -= f.height - w.frame.height   // grow downward, keeping the title bar in place
+                w.setFrame(f, display: false)
+            }
             let nc = NotificationCenter.default
             // In full screen the toolbar turns into an opaque band that covers our own title row, so hide it there.
             nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: w, queue: .main) { [weak w] _ in
@@ -78,6 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hub?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        (notification.object as? NSWindow)?.invalidateShadow()
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard sender === hub, !sender.styleMask.contains(.fullScreen) else { return frameSize }
+        return NSSize(width: max(frameSize.width, Self.hubMinSize.width), height: max(frameSize.height, Self.hubMinSize.height))
     }
 
     private func buildStatusItem() {

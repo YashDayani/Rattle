@@ -19,13 +19,13 @@ struct Dropdown<T: Hashable>: View {
                     .frame(width: 24, height: 24).rotationEffect(.degrees(menu.open ? -180 : 0))
             }
             .padding(.leading, 8).padding(.trailing, 4).frame(width: width, height: 36)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.panel))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(Theme.panel))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).strokeBorder(Theme.line, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).pointer()
         .background(DropdownAnchor(controller: menu))
-        .animation(.easeOut(duration: 0.2), value: menu.open)
+        .animation(Theme.Motion.standard, value: menu.open)
         .onDisappear { menu.close() }
     }
 
@@ -39,12 +39,18 @@ struct Dropdown<T: Hashable>: View {
 @MainActor
 final class DropdownMenuController: ObservableObject {
     @Published var open = false
+    @Published var highlight: Int?
+    private var count = 0
+    private var onPick: ((Int) -> Void)?
     weak var anchor: NSView?
     private var panel: NSPanel?
     private var monitor: Any?
 
     func show(titles: [String], selected: Int?, pick: @escaping (Int) -> Void) {
         guard let anchor, let window = anchor.window else { return }
+        count = titles.count
+        highlight = selected
+        onPick = pick
         let trigger = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
         let height = min(260, CGFloat(titles.count) * DropdownRow.height + 10)
         let floor = (window.screen ?? NSScreen.main)?.visibleFrame.minY ?? 0
@@ -57,7 +63,7 @@ final class DropdownMenuController: ObservableObject {
         p.backgroundColor = .clear
         p.hasShadow = true
         p.level = .popUpMenu
-        p.contentView = NSHostingView(rootView: DropdownMenu(titles: titles, selected: selected) { [weak self] i in
+        p.contentView = NSHostingView(rootView: DropdownMenu(titles: titles, selected: selected, menu: self) { [weak self] i in
             pick(i); self?.close()
         })
         p.alphaValue = 0
@@ -69,6 +75,7 @@ final class DropdownMenuController: ObservableObject {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown, .scrollWheel]) { [weak self] e in
             guard let self, let panel = self.panel else { return e }
             if e.window === panel { return e }
+            if e.type == .keyDown, self.handleKey(e) { return nil }
             if e.type == .scrollWheel { self.close(); return e }
             self.close()
             if e.type == .keyDown { return e.keyCode == 53 ? nil : e }   // Esc only dismisses
@@ -78,11 +85,25 @@ final class DropdownMenuController: ObservableObject {
         }
     }
 
+    /// Arrow keys move the highlight, Return picks it. Returns true when the key was consumed.
+    private func handleKey(_ e: NSEvent) -> Bool {
+        switch e.keyCode {
+        case 125: highlight = min((highlight ?? -1) + 1, count - 1); return true   // down
+        case 126: highlight = max((highlight ?? count) - 1, 0); return true         // up
+        case 36, 76:                                                                // return, enter
+            if let h = highlight { onPick?(h); close() }
+            return true
+        default: return false
+        }
+    }
+
     func close() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         if let panel { panel.parent?.removeChildWindow(panel); panel.orderOut(nil) }
         panel = nil
+        onPick = nil
+        highlight = nil
         if open { open = false }
     }
 }
@@ -96,18 +117,23 @@ private struct DropdownAnchor: NSViewRepresentable {
 private struct DropdownMenu: View {
     let titles: [String]
     let selected: Int?
+    @ObservedObject var menu: DropdownMenuController
     let pick: (Int) -> Void
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(titles.indices, id: \.self) { i in
-                    DropdownRow(title: titles[i], selected: i == selected) { pick(i) }
-                }
-            }.padding(4)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(titles.indices, id: \.self) { i in
+                        DropdownRow(title: titles[i], selected: i == selected, highlighted: i == menu.highlight,
+                                    hover: { if $0 { menu.highlight = i } }) { pick(i) }.id(i)
+                    }
+                }.padding(4)
+            }
+            .onChange(of: menu.highlight) { h in if let h { proxy.scrollTo(h) } }
         }
         .background(Theme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).strokeBorder(Theme.line))
     }
 }
 
@@ -115,8 +141,9 @@ private struct DropdownRow: View {
     static let height: CGFloat = 32
     let title: String
     let selected: Bool
+    let highlighted: Bool
+    let hover: (Bool) -> Void
     let action: () -> Void
-    @LocalState private var hover = false
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
@@ -125,10 +152,10 @@ private struct DropdownRow: View {
                 if selected { Icon("checkmark", 14).foregroundStyle(Theme.ink) }
             }
             .padding(.horizontal, 8).frame(height: Self.height)
-            .background(RoundedRectangle(cornerRadius: 4).fill(hover || selected ? Theme.selected : .clear))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(highlighted || selected ? Theme.selected : .clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).pointer()
-        .onHover { hover = $0 }
+        .buttonStyle(.plain).panelPointer()
+        .onHover(perform: hover)
     }
 }

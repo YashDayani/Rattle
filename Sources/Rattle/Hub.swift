@@ -18,23 +18,32 @@ enum HubPage: String, CaseIterable, Identifiable {
     }
 }
 
+/// Frames of the sidebar rows (keyed by title), in the window's coordinate space, so their tooltips can be drawn over the content panel.
+private struct NavRowFrames: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) { value.merge(nextValue()) { $1 } }
+}
+
 struct HubView: View {
     @ObservedObject var store = AppStore.shared
     @ObservedObject var router = Router.shared
     @LocalState private var showBell = false
+    @LocalState private var navHoverTarget: String? = nil
+    @LocalState private var hoveredNav: String? = nil
     private var page: HubPage { get { router.page } nonmutating set { router.page = newValue } }
     private var collapsed: Bool { router.sidebarCollapsed }
 
+    static let windowRadius: CGFloat = 28
     private let gap: CGFloat = 8        // right and bottom of the panel
     private let titleRow: CGFloat = 52  // window chrome row above the panel
     private var panelShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(topLeadingRadius: 24, bottomLeadingRadius: 16, bottomTrailingRadius: 16, topTrailingRadius: 24)
+        UnevenRoundedRectangle(topLeadingRadius: 32, bottomLeadingRadius: Self.windowRadius - gap, bottomTrailingRadius: Self.windowRadius - gap, topTrailingRadius: 32)
     }
 
     private var toggleButton: some View {
-        Button { withAnimation(.easeOut(duration: 0.15)) { router.sidebarCollapsed.toggle() } } label: {
+        Button { withAnimation(Theme.Motion.quick) { router.sidebarCollapsed.toggle() } } label: {
             ChromeIcon(name: "sidebar.left", side: 32).foregroundStyle(Theme.ink)
-        }.buttonStyle(.plain).pointer().help(collapsed ? "Show sidebar" : "Hide sidebar")
+        }.buttonStyle(.press).pointer().tip(collapsed ? "Show sidebar" : "Hide sidebar")
     }
 
     var body: some View {
@@ -55,6 +64,8 @@ struct HubView: View {
                         case .notes: NotesPage()
                         }
                     }
+                    .id(page)
+                    .transition(.opacity)
                     .frame(maxWidth: 1046)
                     .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 24)
                 }
@@ -71,15 +82,20 @@ struct HubView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .coordinateSpace(name: "hubRoot")
+        .overlayPreferenceValue(NavRowFrames.self) { frames in navTooltips(frames) }
         .background(Theme.window)
-        .animation(.easeOut(duration: 0.16), value: router.showSettings)
-        .animation(.easeOut(duration: 0.2), value: router.isFullScreen)
+        // The window itself is transparent; this gives it its rounded corners (square in full screen).
+        .clipShape(RoundedRectangle(cornerRadius: router.isFullScreen ? 0 : Self.windowRadius, style: .continuous))
+        .animation(Theme.Motion.standard, value: router.showSettings)
+        .animation(Theme.Motion.standard, value: router.isFullScreen)
+        .animation(Theme.Motion.quick, value: page)
     }
 
     private var panelIcons: some View {
         HStack(spacing: 4) {
             Button { showBell.toggle() } label: { ChromeIcon(name: "bell") }
-                .buttonStyle(.plain).pointer().help("Notifications")
+                .buttonStyle(.press).pointer().tip("Notifications")
                 .popover(isPresented: $showBell, arrowEdge: .bottom) {
                     VStack(spacing: 6) {
                         Icon("bell.slash", 25).foregroundStyle(Theme.muted)
@@ -88,7 +104,7 @@ struct HubView: View {
                     }.padding(18).frame(width: 240)
                 }
             Button { router.openSettings(.general) } label: { ChromeIcon(name: "person.crop.circle") }
-                .buttonStyle(.plain).pointer().help("Settings")
+                .buttonStyle(.press).pointer().tip("Settings", alignEnd: true)
         }
         .foregroundStyle(Theme.ink).frame(height: titleRow).padding(.trailing, 8)
     }
@@ -97,7 +113,7 @@ struct HubView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 AppIconView(size: 25)
-                if !collapsed { Text("Rattle").font(.system(size: 20, weight: .semibold, design: .rounded)) }
+                if !collapsed { Text("Rattle").font(Theme.sans(20, .semibold)) }
             }
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
@@ -112,6 +128,22 @@ struct HubView: View {
         .padding(.horizontal, 12).padding(.bottom, 12)
     }
 
+    /// One label per row, shown beside it while the sidebar is collapsed and the pointer is on the row.
+    /// Dark pill, 12px text, 4px to the right of the row and centred on it; it scales in from 0.9 and fades over 150ms.
+    private func navTooltips(_ frames: [String: CGRect]) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(frames.keys.sorted(), id: \.self) { title in
+                if let f = frames[title] {
+                    let on = collapsed && hoveredNav == title
+                    TipBubble(text: title, on: on)
+                        .offset(x: f.maxX + 4, y: f.midY - 16)   // 16 = half the label's 32pt height
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
     private func navRow(icon: String, title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
@@ -121,9 +153,23 @@ struct HubView: View {
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
             .padding(.horizontal, collapsed ? 0 : 8).frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Theme.selected : .clear))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(selected ? Theme.selected : .clear))
             .contentShape(Rectangle())
-        }.buttonStyle(.plain).pointer().help(collapsed ? title : "")
+        }
+        .buttonStyle(.press).pointer()
+        .background(GeometryReader { g in Color.clear.preference(key: NavRowFrames.self, value: [title: g.frame(in: .named("hubRoot"))]) })
+        .onHover { inside in
+            // A short delay before the collapsed-sidebar label appears, so it doesn't flash while the pointer passes over.
+            let wasShowing = hoveredNav != nil
+            if inside {
+                if wasShowing { hoveredNav = title; return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if hoveredNav == nil && navHoverTarget == title { hoveredNav = title } }
+                navHoverTarget = title
+            } else {
+                if navHoverTarget == title { navHoverTarget = nil }
+                if hoveredNav == title { hoveredNav = nil }
+            }
+        }
     }
 }
 
@@ -135,7 +181,7 @@ struct ChromeIcon: View {
     var body: some View {
         Icon(name, 20).frame(width: 20, height: 20)
             .frame(width: side, height: side)
-            .background(RoundedRectangle(cornerRadius: 6).fill(hover ? Theme.selected : .clear))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.sm).fill(hover ? Theme.selected : .clear))
             .contentShape(Rectangle())
             .onHover { hover = $0 }
     }
@@ -167,8 +213,8 @@ struct SetupChecklist: View {
                 row("Speech model", model) { if let m = WhisperModel.all.first(where: { $0.id == AppStore.shared.settings.model }) { Task { @MainActor in ModelDownloader.shared.download(m) } } }
             }
             .padding(14)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.panel))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.panel))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).stroke(Theme.line))
             .onReceive(t) { _ in
                 mic = Permissions.micGranted; ax = Permissions.accessibilityGranted
                 engine = Self.engineReady
@@ -185,7 +231,7 @@ struct SetupChecklist: View {
                 Text(title).font(Theme.sans(12)).strikethrough(ok).foregroundStyle(ok ? Theme.muted : Theme.ink)
                 Spacer()
             }
-        }.buttonStyle(.plain).pointer().disabled(ok)
+        }.buttonStyle(.press).pointer().disabled(ok)
     }
 }
 
@@ -231,8 +277,8 @@ struct DictationPage: View {
                             VStack(spacing: 0) {
                                 ForEach(items) { HistoryRow(item: $0) }
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.line))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.xl).stroke(Theme.line))
                         }
                     }
                 }
@@ -270,7 +316,7 @@ struct HistoryRow: View {
                     Icon(copied ? "checkmark" : "doc.on.doc", 16)
                 }
                 Button { AppStore.shared.history.removeAll { $0.id == item.id } } label: { Icon("trash", 16) }
-            }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).opacity(hover ? 1 : 0)
+            }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted).opacity(hover ? 1 : 0)
         }
         .padding(16)
         .background(hover ? Theme.card : .clear)
@@ -298,8 +344,8 @@ struct DictionaryPage: View {
                         HStack(spacing: 14) { ExamplePill(text: "“kubernetes”", cue: true); Icon("arrow.right", 16).foregroundStyle(.white.opacity(0.8)); ExamplePill(text: "Kubernetes") }
                         Button { adding = true } label: {
                             Text("Add a word").font(Theme.sans(16, .medium)).foregroundStyle(Theme.heroInk).padding(.horizontal, 20).frame(height: 48)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.95)))
-                        }.buttonStyle(.plain).pointer().padding(.top, 14)
+                                .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.heroField))
+                        }.buttonStyle(.press).pointer().padding(.top, 14)
                     }
                 } }
             } else {
@@ -310,10 +356,10 @@ struct DictionaryPage: View {
                                 Text(e.word).font(Theme.sans(14, .medium))
                                 if let r = e.replacement, !r.isEmpty { Icon("arrow.right", 14).foregroundStyle(Theme.muted); Text(r).font(Theme.sans(14)) }
                                 Spacer()
-                                Button { store.dictionary.removeAll { $0.id == e.id } } label: { Icon("trash", 16) }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted)
+                                Button { store.dictionary.removeAll { $0.id == e.id } } label: { Icon("trash", 16) }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted)
                             }.padding(.horizontal, 22).padding(.vertical, 17).overlay(alignment: .bottom) { Divider().overlay(Theme.line) }
                         }
-                    }.background(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+                    }.background(RoundedRectangle(cornerRadius: Theme.Radius.lg).stroke(Theme.line))
                 }
             }
         }
@@ -337,7 +383,7 @@ struct EntrySheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(Theme.serif(24))
             TextField(f1, text: $v1).textFieldStyle(.roundedBorder)
-            if multiline { TextEditor(text: $v2).font(Theme.sans(13)).frame(height: 110).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line)) }
+            if multiline { TextEditor(text: $v2).font(Theme.sans(13)).frame(height: 110).overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).stroke(Theme.line)) }
             else { TextField(f2, text: $v2).textFieldStyle(.roundedBorder) }
             HStack { Spacer(); PillButton(title: "Cancel", action: cancel); PillButton(title: "Save", prominent: true, action: save) }
         }.padding(24).frame(width: 420)

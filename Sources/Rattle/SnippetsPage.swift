@@ -13,7 +13,7 @@ struct HeroCard<Content: View>: View {
             content.padding(42)
         }
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
     }
 }
 
@@ -32,7 +32,7 @@ struct ExamplePill: View {
         Text(text).font(cue ? Theme.sans(17, .medium).italic() : Theme.sans(17))
             .foregroundStyle(cue ? Color.white : Theme.heroInk)
             .padding(.horizontal, 16).frame(height: 46)
-            .background(RoundedRectangle(cornerRadius: 9).fill(cue ? Color.white.opacity(0.28) : Color.white.opacity(0.92)))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(cue ? Color.white.opacity(0.28) : Color.white.opacity(0.92)))
     }
 }
 
@@ -71,14 +71,14 @@ struct SnippetsPage: View {
                     }
                     Spacer()
                     tool("magnifyingglass") { searching.toggle(); if !searching { query = "" } }
-                    tool("arrow.up.arrow.down") { alpha.toggle() }.help(alpha ? "Sorted A–Z" : "Sorted by newest")
+                    tool("arrow.up.arrow.down") { alpha.toggle() }.tip(alpha ? "Sorted A–Z" : "Sorted by newest")
                     tool("arrow.clockwise") { withAnimation(.easeInOut(duration: 0.5)) { spin += 360 }; store.objectWillChange.send() }
                         .rotationEffect(.degrees(spin))
                 }.overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
             }
             ScrollView {
                 if store.snippets.isEmpty { hero }
-                else if shown.isEmpty { Text("No snippets match “\(query)”.").foregroundStyle(Theme.muted).padding(.top, 40).frame(maxWidth: .infinity) }
+                else if shown.isEmpty { EmptyState(icon: "magnifyingglass", title: "No snippets match “\(query)”") }
                 else {
                     VStack(spacing: 10) { ForEach(shown) { row($0) } }
                 }
@@ -103,8 +103,8 @@ struct SnippetsPage: View {
                 example("“intro email”", "Hey, would love to find some time to chat later…")
                 Button { new() } label: {
                     Text("Add new snippet").font(Theme.sans(16, .medium)).foregroundStyle(Theme.heroInk)
-                        .padding(.horizontal, 20).frame(height: 48).background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.95)))
-                }.buttonStyle(.plain).pointer().padding(.top, 14)
+                        .padding(.horizontal, 20).frame(height: 48).background(RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.heroField))
+                }.buttonStyle(.press).pointer().padding(.top, 14)
             }
         }
     }
@@ -127,15 +127,15 @@ struct SnippetsPage: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { flash = nil } } label: { Icon(flash == s.id ? "checkmark" : "doc.on.doc", 16) }
                 Button { editing = s; isNew = false } label: { Icon("pencil", 16) }
                 Button { store.snippets.removeAll { $0.id == s.id } } label: { Icon("trash", 16) }
-            }.buttonStyle(.plain).pointer().foregroundStyle(Theme.muted).font(Theme.sans(13))
+            }.buttonStyle(.press).pointer().foregroundStyle(Theme.muted).font(Theme.sans(13))
         }
         .padding(.horizontal, 18).padding(.vertical, 15)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.lg).stroke(Theme.line))
     }
 
     private func tool(_ icon: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Icon(icon, 19).foregroundStyle(Theme.muted).frame(width: 28, height: 28) }.buttonStyle(.plain).pointer()
+        Button(action: action) { Icon(icon, 19).foregroundStyle(Theme.muted).frame(width: 28, height: 28) }.buttonStyle(.press).pointer()
     }
 
     private func new() { editing = Snippet(trigger: "", expansion: ""); isNew = true }
@@ -160,7 +160,7 @@ struct SnippetSheet: View {
             Text("When you say").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
             TextField("e.g. my LinkedIn", text: $trigger).textFieldStyle(.roundedBorder)
             Text("Rattle types").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.muted)
-            TextEditor(text: $expansion).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
+            TextEditor(text: $expansion).font(Theme.sans(13)).frame(height: 120).overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm).stroke(Theme.line))
             HStack {
                 Spacer()
                 PillButton(title: "Cancel", action: cancel)

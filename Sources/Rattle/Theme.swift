@@ -205,14 +205,23 @@ struct EmptyState: View {
     /// Shown instead of the icon when set (an Illustration name).
     var illustration: String? = nil
     var body: some View {
-        VStack(spacing: 6) {
-            if let illustration { IllustrationView(name: illustration, height: 150).padding(.bottom, 10) }
-            else { Icon(icon, 24).foregroundStyle(Theme.muted).padding(.bottom, 4) }
-            Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
-            if let detail { Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted).multilineTextAlignment(.center) }
+        if let illustration {
+            // Same look as the Dictation and Meetings empty states: doodle, serif heading, centred on the page.
+            VStack(spacing: 6) {
+                IllustrationView(name: illustration, height: 170).padding(.bottom, 12)
+                Text(title).font(Theme.serif(22)).foregroundStyle(Theme.ink)
+                if let detail { Text(detail).font(Theme.sans(14)).foregroundStyle(Theme.muted).multilineTextAlignment(.center) }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 6) {
+                Icon(icon, 24).foregroundStyle(Theme.muted).padding(.bottom, 4)
+                Text(title).font(Theme.sans(15, .medium)).foregroundStyle(Theme.ink)
+                if let detail { Text(detail).font(Theme.sans(15)).foregroundStyle(Theme.muted).multilineTextAlignment(.center) }
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 48)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 48)
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 extension ButtonStyle where Self == PressStyle { static var press: PressStyle { PressStyle() } }

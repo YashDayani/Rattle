@@ -265,6 +265,8 @@ struct Settings: Codable, Equatable {
     var mcpSnippets: Bool = true
     /// Lets connected apps rename, edit and delete notes and meetings. Off until the user turns it on.
     var mcpAllowEdits: Bool = false
+    /// False until the first-run onboarding is finished.
+    var onboardingDone: Bool = false
 
     init() {}
 
@@ -304,13 +306,15 @@ struct Settings: Codable, Equatable {
         mcpDictations = try c.decodeIfPresent(Bool.self, forKey: .mcpDictations) ?? d.mcpDictations
         mcpSnippets = try c.decodeIfPresent(Bool.self, forKey: .mcpSnippets) ?? d.mcpSnippets
         mcpAllowEdits = try c.decodeIfPresent(Bool.self, forKey: .mcpAllowEdits) ?? d.mcpAllowEdits
+        // A settings file from before onboarding existed belongs to someone already using Rattle.
+        onboardingDone = try c.decodeIfPresent(Bool.self, forKey: .onboardingDone) ?? true
     }
 
     enum Keys: String, CodingKey {
         case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
         case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
         case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
-        case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits
+        case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits, onboardingDone
     }
 }
 

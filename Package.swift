@@ -8,6 +8,7 @@ let package = Package(
         .executableTarget(
             name: "Rattle",
             path: "Sources/Rattle"
-        )
+        ),
+        .testTarget(name: "RattleTests", dependencies: ["Rattle"], path: "Tests/RattleTests")
     ]
 )

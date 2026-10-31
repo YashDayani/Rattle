@@ -21,6 +21,16 @@ Talk instead of typing, anywhere on your Mac. Rattle is a native macOS app for d
 - For local transcription: `brew install whisper-cpp`. Rattle downloads the Whisper model itself.
 - Optional: an OpenAI-compatible AI server for meeting notes and Transforms (LM Studio, Ollama, OpenAI, Gemini, Groq, Mistral, OpenRouter), and a Groq API key for cloud transcription.
 
+## Install
+
+In Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YashDayani/Rattle/main/install.sh | sh
+```
+
+It downloads the latest release with `curl`, checks it against the published SHA-256, puts Rattle in `/Applications` and opens it. Downloads made by `curl` are not flagged as "from the internet", so macOS opens the app right away. Run the same line again any time to update.
+
 ## Build and run
 
 ```bash

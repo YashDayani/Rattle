@@ -261,7 +261,7 @@ struct DictationPage: View {
             Card {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Hold \(store.settings.shortcut.title) and speak").font(Theme.sans(15, .semibold))
+                        Text("Hold \(store.settings.pushTitle) and speak").font(Theme.sans(15, .semibold))
                         Text("Press space while holding for hands-free. Esc cancels.").font(Theme.sans(13)).foregroundStyle(Theme.muted)
                     }
                     Spacer()
@@ -275,7 +275,7 @@ struct DictationPage: View {
                 VStack(spacing: 6) {
                     IllustrationView(name: Illustration.dictationEmpty, height: 170).padding(.bottom, 12)
                     Text("No dictations yet").font(Theme.serif(22))
-                    Text("Click into any text field, hold \(store.settings.shortcut.title), and talk.").foregroundStyle(Theme.muted).font(Theme.sans(14))
+                    Text("Click into any text field, hold \(store.settings.pushTitle), and talk.").foregroundStyle(Theme.muted).font(Theme.sans(14))
                 }.frame(maxWidth: .infinity)
                 Spacer()
             } else {

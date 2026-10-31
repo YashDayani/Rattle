@@ -106,7 +106,7 @@ struct OnboardingView: View {
 
     // MARK: Copy
 
-    private var keyName: String { settings.shortcut.title }
+    private var keyName: String { settings.pushTitle }
 
     private var title: String {
         switch step {

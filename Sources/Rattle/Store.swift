@@ -168,6 +168,18 @@ enum Shortcut: String, Codable, CaseIterable, Identifiable {
         case .rightControl: return "Right ⌃"
         }
     }
+    var chord: KeyChord {
+        switch self {
+        case .fn: return .fn
+        case .rightOption: return .rightOption
+        case .rightCommand: return .rightCommand
+        case .rightControl: return .rightControl
+        }
+    }
+    init?(chord: KeyChord) {
+        guard let match = Shortcut.allCases.first(where: { $0.chord == chord }) else { return nil }
+        self = match
+    }
 }
 
 enum CleanupLevel: String, Codable, CaseIterable, Identifiable {
@@ -208,7 +220,17 @@ enum SpeechEngine: String, Codable, CaseIterable, Identifiable {
 }
 
 struct Settings: Codable, Equatable {
-    var shortcut: Shortcut = .fn
+    /// Every keyboard shortcut, per action. The source of truth for `shortcut` below.
+    var bindings = ShortcutBindings.default
+    /// The push-to-talk key when it is one of the single keys onboarding offers; fn otherwise.
+    var shortcut: Shortcut {
+        get { bindings.pushToTalk.first.flatMap { Shortcut(chord: $0) } ?? .fn }
+        set { bindings.pushToTalk = [newValue.chord]; bindings.handsFree = [KeyChord(newValue.chord.keys + [49])] }
+    }
+    /// Label for the first push-to-talk chord, e.g. "fn" or "⌃ Ctrl + ⌥ Opt".
+    var pushTitle: String { bindings.pushToTalk.first?.title ?? "your shortcut" }
+    /// Label for the first Command Mode chord, nil when none is set.
+    var commandTitle: String? { bindings.commandMode.first?.title }
     var micUID: String? = nil
     var language: String = "en"
     var model: String = "base.en"
@@ -252,7 +274,6 @@ struct Settings: Codable, Equatable {
     // Transforms
     var autoTransformID: String? = nil
     var commandModeEnabled: Bool = true
-    var commandShortcut: Shortcut = .rightCommand
     // Notetaker
     var notetakerSummaries: Bool = true
     var notetakerCaptureSystemAudio: Bool = true
@@ -273,7 +294,13 @@ struct Settings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         let d = Settings()
-        shortcut = try c.decodeIfPresent(Shortcut.self, forKey: .shortcut) ?? d.shortcut
+        if let saved = try c.decodeIfPresent(ShortcutBindings.self, forKey: .bindings) {
+            bindings = saved
+        } else {
+            // A settings file from before custom shortcuts: carry the single keys over.
+            if let key = try c.decodeIfPresent(Shortcut.self, forKey: .shortcut) { shortcut = key }
+            if let key = try c.decodeIfPresent(Shortcut.self, forKey: .commandShortcut) { bindings.commandMode = [key.chord] }
+        }
         micUID = try c.decodeIfPresent(String.self, forKey: .micUID)
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? d.language
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
@@ -296,7 +323,6 @@ struct Settings: Codable, Equatable {
         meetingSpeechModel = try c.decodeIfPresent(String.self, forKey: .meetingSpeechModel) ?? d.meetingSpeechModel
         autoTransformID = try c.decodeIfPresent(String.self, forKey: .autoTransformID)
         commandModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .commandModeEnabled) ?? d.commandModeEnabled
-        commandShortcut = try c.decodeIfPresent(Shortcut.self, forKey: .commandShortcut) ?? d.commandShortcut
         notetakerSummaries = try c.decodeIfPresent(Bool.self, forKey: .notetakerSummaries) ?? d.notetakerSummaries
         notetakerCaptureSystemAudio = try c.decodeIfPresent(Bool.self, forKey: .notetakerCaptureSystemAudio) ?? d.notetakerCaptureSystemAudio
         notetakerSaveAudio = try c.decodeIfPresent(Bool.self, forKey: .notetakerSaveAudio) ?? d.notetakerSaveAudio
@@ -311,9 +337,9 @@ struct Settings: Codable, Equatable {
     }
 
     enum Keys: String, CodingKey {
-        case shortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
+        case bindings, shortcut, commandShortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
         case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
-        case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, commandShortcut, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
+        case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
         case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits, onboardingDone
     }
 }

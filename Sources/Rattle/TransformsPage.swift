@@ -25,8 +25,7 @@ struct TransformsPage: View {
                     }
                     SettingRow(title: "Command Mode", detail: commandDetail, last: true) {
                         HStack(spacing: 10) {
-                            Dropdown(selection: Binding(get: { store.settings.commandShortcut }, set: { store.settings.commandShortcut = $0; DictationController.shared.applyShortcut() }),
-                                     options: Shortcut.allCases.map { ($0, $0.title) }, width: 140)
+                            PillButton(title: "Shortcut") { Router.shared.openSettings(.shortcuts) }
                             Toggle("", isOn: Binding(get: { store.settings.commandModeEnabled }, set: { store.settings.commandModeEnabled = $0; DictationController.shared.applyShortcut() }))
                                 .toggleStyle(ThemeSwitchStyle()).labelsHidden()
                         }
@@ -89,8 +88,7 @@ struct TransformsPage: View {
     }
 
     private var commandDetail: String {
-        let k = store.settings.commandShortcut.title
-        if store.settings.commandShortcut == store.settings.shortcut { return "Pick a different key from your dictation shortcut." }
+        guard let k = store.settings.commandTitle else { return "No shortcut set. Add one in Settings → Shortcuts." }
         return "Select text in any app, hold \(k) and say what to change (\"make it shorter\"). With nothing selected, say what to write."
     }
 

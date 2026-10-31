@@ -259,7 +259,7 @@ struct NotesWindowView: View {
                         .id(id)
                     if store.isBlankNote(id) {
                         // TextEditor insets its text by 5pt; the hint lines up with the caret.
-                        Text("Type, or hold \(store.settings.shortcut.title) to dictate")
+                        Text("Type, or hold \(store.settings.pushTitle) to dictate")
                             .font(Theme.sans(model.fontSize)).foregroundStyle(Theme.switchOff)
                             .padding(.leading, 5).allowsHitTesting(false)
                     }

@@ -2,11 +2,12 @@ import SwiftUI
 import ServiceManagement
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general = "General", system = "System", notetaker = "Meetings", ai = "AI", mcp = "MCP", migration = "Migration", model = "Model", privacy = "Data and Privacy"
+    case general = "General", shortcuts = "Shortcuts", system = "System", notetaker = "Meetings", ai = "AI", mcp = "MCP", migration = "Migration", model = "Model", privacy = "Data and Privacy"
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .general: return "slider.horizontal.3"
+        case .shortcuts: return "keyboard"
         case .system: return "laptopcomputer"
         case .notetaker: return "record.circle"
         case .ai: return "sparkle"
@@ -52,6 +53,7 @@ struct SettingsModal: View {
                     }
                     switch tab {
                     case .general: GeneralTab()
+                    case .shortcuts: ShortcutsTab()
                     case .system: SystemTab()
                     case .notetaker: NotetakerTab()
                     case .ai: AITab()
@@ -74,9 +76,8 @@ struct GeneralTab: View {
     @LocalState private var mics = AudioDevices.inputs()
     var body: some View {
         Card {
-            SettingRow(title: "Shortcuts", detail: "Hold \(store.settings.shortcut.title) and speak. Press space to lock hands-free.") {
-                Dropdown(selection: Binding(get: { store.settings.shortcut }, set: { store.settings.shortcut = $0; DictationController.shared.applyShortcut() }),
-                         options: Shortcut.allCases.map { ($0, $0.title) }, width: 160)
+            SettingRow(title: "Shortcuts", detail: "Hold \(store.settings.pushTitle) and speak. Change this and more shortcuts.") {
+                PillButton(title: "Customize") { Router.shared.settingsTab = .shortcuts }
             }
             SettingRow(title: "Microphone", detail: store.settings.micUID == nil ? "Auto-detect (\(AudioDevices.defaultInputName()))" : (mics.first { $0.uid == store.settings.micUID }?.name ?? "Selected device")) {
                 Dropdown(selection: Binding(get: { store.settings.micUID ?? "" }, set: { store.settings.micUID = $0.isEmpty ? nil : $0 }),

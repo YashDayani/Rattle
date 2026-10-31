@@ -59,7 +59,7 @@ struct NotesPage: View {
                 }
             }
             if store.notes.isEmpty && store.folders.isEmpty {
-                empty(title: "No notes yet", detail: "Create one, then type or hold \(store.settings.shortcut.title) to dictate into it.")
+                empty(title: "No notes yet", detail: "Create one, then type or hold \(store.settings.pushTitle) to dictate into it.")
             } else if shown.isEmpty && shownFolders.isEmpty {
                 empty(title: query.isEmpty ? "This folder is empty" : "No notes match “\(query)”", detail: nil)
             } else {
@@ -308,7 +308,7 @@ private struct NoteEditor: View {
                     // TextEditor insets its text by 5pt; the hint lines up with the caret.
                     HStack(spacing: 5) {
                         Text("Start typing, or hold")
-                        Text(store.settings.shortcut.title).font(Theme.sans(12, .medium))
+                        Text(store.settings.pushTitle).font(Theme.sans(12, .medium))
                             .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 20)
                             .background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(Theme.card))
                         Text("to dictate. The first line is the title.")

@@ -22,7 +22,6 @@ final class DictationController: ObservableObject {
 
     private let recorder = AudioRecorder()
     private let hotkey = HotkeyManager()
-    private let commandKey = HotkeyManager()
     private enum Mode { case dictate, command }
     private var mode: Mode = .dictate
     private var selection: String?
@@ -36,12 +35,8 @@ final class DictationController: ObservableObject {
     var isRecording: Bool { if case .listening = phase { return true } else { return false } }
 
     func boot() {
-        hotkey.shortcut = store.settings.shortcut
         hotkey.isActive = { [weak self] in self?.isRecording ?? false }
-        hotkey.onPress = { [weak self] in self?.pressed() }
-        hotkey.onRelease = { [weak self] in self?.released() }
-        hotkey.onHandsFree = { [weak self] in self?.lockHandsFree() }
-        hotkey.onCancel = { [weak self] in self?.cancel() }
+        hotkey.onEvent = { [weak self] event in self?.handle(event) }
         recorder.onLevel = { [weak self] rms in
             let now = Date()
             DispatchQueue.main.async {
@@ -51,18 +46,57 @@ final class DictationController: ObservableObject {
             }
         }
         hotkey.start()
-
-        commandKey.isActive = { [weak self] in self?.isRecording ?? false }
-        commandKey.onPress = { [weak self] in self?.commandPressed() }
-        commandKey.onRelease = { [weak self] in self?.commandReleased() }
-        commandKey.onCancel = { [weak self] in self?.cancel() }
         applyShortcut()
     }
 
     func applyShortcut() {
-        hotkey.shortcut = store.settings.shortcut
-        commandKey.shortcut = store.settings.commandShortcut
-        if store.settings.commandModeEnabled && store.settings.commandShortcut != store.settings.shortcut { commandKey.start() } else { commandKey.stop() }
+        var bindings = store.settings.bindings
+        if !store.settings.commandModeEnabled { bindings.commandMode = [] }
+        hotkey.bindings = bindings
+    }
+
+    /// The shortcut editor records keys itself, so the global shortcuts must stay quiet while it listens.
+    func setShortcutsSuspended(_ suspended: Bool) { hotkey.suspended = suspended }
+
+    private func handle(_ event: ShortcutEvent) {
+        switch event {
+        case .press(.pushToTalk): pressed()
+        case .release(.pushToTalk): released()
+        case .press(.commandMode): commandPressed()
+        case .release(.commandMode): commandReleased()
+        case .trigger(.handsFree): handsFreeTriggered()
+        case .trigger(.cancel): cancel()
+        case .trigger(.pressEnter): afterModifiersLift { TextInserter.pressReturn() }
+        case .trigger(.pasteLast): pasteLastTranscript()
+        case .trigger(.copyLast): copyLastTranscript()
+        case .trigger(.notetaker): NotetakerController.shared.toggle()
+        default: break
+        }
+    }
+
+    // MARK: Last transcript
+    private var lastTranscript: String? { store.history.first?.text }
+
+    private func copyLastTranscript() {
+        guard let text = lastTranscript else { flash("No dictation to copy yet"); return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        flash("Copied last transcript")
+    }
+
+    /// A shortcut's own modifiers are still down when it fires; sending a key before they lift would carry them along.
+    private func afterModifiersLift(_ action: @escaping () -> Void) {
+        Task {
+            for _ in 0..<40 where !NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+            action()
+        }
+    }
+
+    private func pasteLastTranscript() {
+        guard let text = lastTranscript else { flash("No dictation to paste yet"); return }
+        afterModifiersLift { TextInserter.insert(text) }
     }
 
     // MARK: Command mode (select text, hold the command key, say what to change)
@@ -100,6 +134,17 @@ final class DictationController: ObservableObject {
     private func released() {
         if case .listening(let hf) = phase, !hf {
             if Date().timeIntervalSince(startedAt) < 0.3 { cancel(silent: true) } else { stop() }
+        }
+    }
+    /// Hands-free: lock a push-to-talk already in progress, or start listening on its own, and stop on the next press.
+    private func handsFreeTriggered() {
+        switch phase {
+        case .idle, .message:
+            mode = .dictate; selection = nil; start()
+            lockHandsFree()
+        case .listening(false): lockHandsFree()
+        case .listening(true): stop()
+        default: break
         }
     }
     private func lockHandsFree() { if case .listening(false) = phase { phase = .listening(handsFree: true) } }

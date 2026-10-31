@@ -257,11 +257,11 @@ struct FlowBarView: View {
         let t = hover.lastTarget
         let label: String, key: String?
         switch t {
-        case .dictate: label = "Dictate"; key = store.settings.shortcut.title
+        case .dictate: label = "Dictate"; key = store.settings.pushTitle
         case .notetaker: label = notetaker.state == .recording ? "Stop meeting" : "Start meeting"; key = nil
         case .notetakerPage: label = "Open Meetings"; key = nil
         case .notes: label = "Open Notes"; key = nil
-        case .transforms: label = "Transforms"; key = store.settings.commandModeEnabled ? store.settings.commandShortcut.title : nil
+        case .transforms: label = "Transforms"; key = store.settings.commandModeEnabled ? store.settings.commandTitle : nil
         case .transformsPage: label = "Open Transforms"; key = nil
         }
         let visible = open && hover.target != nil

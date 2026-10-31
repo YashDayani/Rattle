@@ -28,6 +28,18 @@ enum TextInserter {
 }
 
 extension TextInserter {
+    /// Presses Return in the frontmost app, for the "Press Enter" shortcut.
+    static func pressReturn() {
+        let src = CGEventSource(stateID: .combinedSessionState)
+        let down = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)
+        let up = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)
+        down?.flags = []; up?.flags = []
+        down?.post(tap: .cgAnnotatedSessionEventTap)
+        up?.post(tap: .cgAnnotatedSessionEventTap)
+    }
+}
+
+extension TextInserter {
     /// Returns the frontmost app's selected text by issuing ⌘C, then restores the clipboard.
     @MainActor
     static func captureSelection() async -> String? {

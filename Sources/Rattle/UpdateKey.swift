@@ -6,7 +6,7 @@ import Foundation
 /// `scripts/setup-update-signing.sh` fills this in once. Until then it is empty, the updater skips the signature check,
 /// and the release workflow refuses to publish.
 enum UpdateKey {
-    static let publicKeyBase64 = ""
+    static let publicKeyBase64 = "nmJKOH6hJq3265RR0YSaXYKu48fyS48k1B+V5LdR7r8="
 
     /// The 32 raw key bytes, or nil while signing is not set up.
     static var publicKey: Data? {

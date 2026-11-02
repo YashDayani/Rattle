@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# Builds Rattle.app (release) with SwiftPM and ad-hoc signs it. No Xcode needed.
+# Builds Rattle.app (release) with SwiftPM and signs it. No Xcode needed.
+#
+#   RATTLE_VERSION         version shown in the app and checked by the updater (default 1.0)
+#   RATTLE_BUILD           build number (default 1)
+#   RATTLE_UNIVERSAL=1     build for Apple Silicon and Intel (the release workflow does this)
+#   RATTLE_SIGN_IDENTITY   code-signing identity to use instead of "Rattle Local Signing" / ad-hoc
+#   RATTLE_HARDENED=1      with a "Developer ID Application: ..." identity: hardened runtime + entitlements, ready for notarization
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift build -c release
+VERSION="${RATTLE_VERSION:-1.0}"
+BUILD="${RATTLE_BUILD:-1}"
+FLAGS=(-c release)
+[ "${RATTLE_UNIVERSAL:-0}" = "1" ] && FLAGS+=(--arch arm64 --arch x86_64)
+swift build "${FLAGS[@]}"
+BIN="$(swift build "${FLAGS[@]}" --show-bin-path)/Rattle"
 APP=build/Rattle.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/Rattle "$APP/Contents/MacOS/Rattle"
+cp "$BIN" "$APP/Contents/MacOS/Rattle"
 
 # App icon (.icns) so Finder, Dock and System Settings privacy lists show it.
 swift scripts/make-icon.swift build/AppIcon.iconset
@@ -40,8 +51,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 ${ICON_FILE_KEY}
 ${ICON_NAME:+  <key>CFBundleIconName</key><string>$ICON_NAME</string>}
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>CFBundleVersion</key><string>${BUILD}</string>
   <key>LSMinimumSystemVersion</key><string>14.4</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAudioCaptureUsageDescription</key><string>Rattle records the audio playing on your Mac (the other side of a call) so Rattle can transcribe meetings.</string>
@@ -49,10 +60,14 @@ ${ICON_NAME:+  <key>CFBundleIconName</key><string>$ICON_NAME</string>}
 </dict></plist>
 PLIST
 IDENTITY="Rattle Local Signing"
-if security find-identity -p codesigning | grep -q "$IDENTITY"; then
+if [ -n "${RATTLE_SIGN_IDENTITY:-}" ] && [ "${RATTLE_HARDENED:-0}" = "1" ]; then
+  codesign --force --deep --options runtime --timestamp --entitlements scripts/Rattle.entitlements --sign "$RATTLE_SIGN_IDENTITY" "$APP"
+elif [ -n "${RATTLE_SIGN_IDENTITY:-}" ]; then
+  codesign --force --deep --sign "$RATTLE_SIGN_IDENTITY" "$APP"
+elif security find-identity -p codesigning | grep -q "$IDENTITY"; then
   codesign --force --deep --sign "$IDENTITY" "$APP"
 else
   echo "warning: '$IDENTITY' not found (run scripts/setup-signing.sh); falling back to ad-hoc signing" >&2
   codesign --force --deep --sign - "$APP"
 fi
-echo "Built $APP"
+echo "Built $APP $VERSION ($(lipo -archs "$APP/Contents/MacOS/Rattle"))"

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the tests
+        run: swift test
+      - name: Build universal app
+        env:
+          RATTLE_UNIVERSAL: "1"
+        run: ./scripts/build.sh
+      - name: Check the bundle
+        run: |
+          lipo -archs build/Rattle.app/Contents/MacOS/Rattle
+          codesign --verify --deep --strict build/Rattle.app
+          # every linked library must be an Apple system library (otool prints one header line per architecture)
+          if otool -L build/Rattle.app/Contents/MacOS/Rattle | grep -v -E '^build/' | awk '{print $1}' | grep -v -E '^/(System|usr/lib)/'; then
+            echo "non-system library linked"; exit 1
+          fi
+          echo "only system libraries are linked"
+      - name: Check the release scripts
+        run: |
+          sh -n scripts/setup-update-signing.sh
+          sh -n install.sh
+          swiftc -typecheck scripts/generate_update_key.swift
+          swiftc -typecheck scripts/sign_update.swift
+          python3 -m py_compile .github/scripts/release_notes.py

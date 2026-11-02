@@ -262,6 +262,8 @@ struct Settings: Codable, Equatable {
     var showInDock: Bool = true
     var showFlowBar: Bool = true
     var launchAtLogin: Bool = false
+    /// Ask GitHub for a newer release each time Rattle starts.
+    var autoCheckUpdates: Bool = true
     var userName: String = NSFullUserName().split(separator: " ").first.map(String.init) ?? "there"
     // AI (any OpenAI-compatible endpoint; defaults to a local LM Studio server)
     var llmBaseURL: String = "http://localhost:1234/v1"
@@ -314,6 +316,7 @@ struct Settings: Codable, Equatable {
         showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? d.showInDock
         showFlowBar = try c.decodeIfPresent(Bool.self, forKey: .showFlowBar) ?? d.showFlowBar
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
+        autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? d.autoCheckUpdates
         userName = try c.decodeIfPresent(String.self, forKey: .userName) ?? d.userName
         llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? d.llmBaseURL
         llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? d.llmModel
@@ -337,7 +340,7 @@ struct Settings: Codable, Equatable {
     }
 
     enum Keys: String, CodingKey {
-        case bindings, shortcut, commandShortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, userName
+        case bindings, shortcut, commandShortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, autoCheckUpdates, userName
         case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
         case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
         case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits, onboardingDone

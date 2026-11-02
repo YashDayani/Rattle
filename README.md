@@ -123,7 +123,7 @@ You need Xcode or the Xcode Command Line Tools (Swift 5.9 or later).
 open build/Rattle.app
 ```
 
-`build.sh` builds a release binary with SwiftPM, assembles `build/Rattle.app` (icon, fonts, illustrations, Info.plist) and signs it.
+`build.sh` builds a release binary with SwiftPM, assembles `build/Rattle.app` (icon, fonts, illustrations, Info.plist) and signs it. Set `RATTLE_VERSION` to change the version it reports.
 
 macOS ties Microphone and Accessibility permissions to the app's signature. To keep those grants across rebuilds, create a stable local signing identity once:
 
@@ -139,23 +139,19 @@ Run the tests:
 swift test
 ```
 
+## Updates
+
+**Rattle → Check for Updates…** (also in the menu bar icon, and *Settings → General → Updates*) looks at this repository's latest GitHub release. Rattle also checks quietly each time it starts; switch that off in *Settings → General*. Nothing but the request to GitHub is sent. If a newer version exists you see its release notes and can **Install & restart**, **Skip this version** or open the release page.
+
+An update is only installed when the download comes from GitHub over HTTPS, matches the SHA-256 in the release's `SHA256SUMS`, is signed with the Rattle update key (Ed25519, checked against a public key built into the app, so even someone who could edit the release page cannot ship a fake update), is Rattle (same bundle identifier), is newer than the running version, has a valid code signature and, when your copy is signed with a developer certificate, carries the same signer. Rattle then replaces itself and restarts. If it cannot replace itself where it is installed, the new app is shown in Finder instead.
+
 ## Releasing (maintainers)
 
-1. Bump `CFBundleShortVersionString` in `scripts/build.sh` and run `./scripts/build.sh`.
-2. Zip the app and write its checksum. The installer expects these exact file names:
+Releases are built, attested and published by GitHub Actions: open **Actions → Release → Run workflow**, type a version such as `1.2.0` and run it. The workflow checks that update signing is set up and that CI passed for the latest `main` commit, tags it, runs the tests, builds the universal app, writes `SHA256SUMS`, signs the zip with the update key (`Rattle.zip.sig`), attaches a build-provenance attestation and publishes the release. Release notes come from the commit messages since the previous tag. `install.sh` and the in-app updater both read that release.
 
-   ```bash
-   ditto -c -k --keepParent build/Rattle.app Rattle.zip
-   shasum -a 256 Rattle.zip | awk '{print $1"  Rattle.zip"}' > SHA256SUMS
-   ```
+**Signed updates (one-time, required).** Run `scripts/setup-update-signing.sh`: it makes an Ed25519 key pair, stores the private half as the repository secret `UPDATE_SIGNING_KEY` and writes the public half into [`Sources/Rattle/UpdateKey.swift`](Sources/Rattle/UpdateKey.swift). Commit that file. Keep a backup of the private key: if it is lost, installed copies stop accepting updates until people reinstall a build with a new key. A release stops before anything is tagged while signing is not set up.
 
-3. Publish a GitHub release with both files attached:
-
-   ```bash
-   gh release create v1.0.0 Rattle.zip SHA256SUMS --title "Rattle v1.0.0" --generate-notes
-   ```
-
-`install.sh` always installs the latest release, so nothing else needs updating.
+**Optional:** a signing identity (so macOS keeps the Microphone and Accessibility grants across updates) and an Apple Developer ID (to notarize). The secrets are listed at the top of [`.github/workflows/release.yml`](.github/workflows/release.yml). Without them, release builds are ad-hoc signed, so macOS may ask for those permissions again after an update.
 
 ## How it works
 
@@ -174,7 +170,8 @@ Hotkey (CGEvent tap)  →  Audio capture  →  Transcriber (whisper.cpp or Groq)
 | `Illustrations/` | Recoloured Open Doodles used in onboarding and empty states |
 | `Fonts/` | Figtree and EB Garamond |
 | `Icon/` | App icon (Icon Composer) |
-| `scripts/` | Build, signing, icon and illustration scripts, and a Wispr Flow import tool |
+| `scripts/` | Build, signing and update-signing, icon and illustration scripts, and a Wispr Flow import tool |
+| `.github/` | CI and the release workflow |
 | `docs/` | README assets and design notes |
 
 ## Known limits
@@ -192,3 +189,7 @@ Hotkey (CGEvent tap)  →  Audio capture  →  Transcriber (whisper.cpp or Groq)
 - Local transcription: [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
 
 Full notices ship inside the app bundle (`Contents/Resources/lucide-LICENSE.txt`, `Contents/Resources/Fonts/*-OFL.txt`).
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE): free to use, study and modify for any noncommercial purpose.

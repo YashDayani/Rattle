@@ -27,6 +27,7 @@ private struct NavRowFrames: PreferenceKey {
 struct HubView: View {
     @ObservedObject var store = AppStore.shared
     @ObservedObject var router = Router.shared
+    @ObservedObject var updater = Updater.shared
     @LocalState private var showBell = false
     @LocalState private var navHoverTarget: String? = nil
     @LocalState private var hoveredNav: String? = nil
@@ -88,6 +89,12 @@ struct HubView: View {
                     .transition(.scale(scale: 0.97).combined(with: .opacity))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+
+            if updater.dialogVisible {
+                Color.black.opacity(0.32).ignoresSafeArea()
+                UpdateDialog().transition(.scale(scale: 0.97).combined(with: .opacity))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .coordinateSpace(name: "hubRoot")
         .overlayPreferenceValue(NavRowFrames.self) { frames in navTooltips(frames) }
@@ -96,6 +103,7 @@ struct HubView: View {
         .clipShape(RoundedRectangle(cornerRadius: router.isFullScreen ? 0 : Self.windowRadius, style: .continuous))
         .animation(Theme.Motion.standard, value: router.showSettings)
         .animation(Theme.Motion.standard, value: router.namePrompt?.id)
+        .animation(Theme.Motion.standard, value: updater.dialogVisible)
         .animation(Theme.Motion.standard, value: router.isFullScreen)
         .animation(Theme.Motion.quick, value: page)
     }

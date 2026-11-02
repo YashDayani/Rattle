@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if store.settings.onboardingDone {
             showHub()
             if !Permissions.accessibilityGranted { Permissions.requestAccessibility() }
+            Updater.shared.checkOnLaunch()
         } else {
             // Onboarding asks for Accessibility itself, with an explanation.
             OnboardingWindowController.shared.show()
@@ -117,10 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let copy = NSMenuItem(title: "Copy last dictation", action: #selector(copyLast), keyEquivalent: "")
         copy.target = self; m.addItem(copy)
         m.addItem(NSMenuItem.separator())
+        m.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         m.addItem(withTitle: "Quit Rattle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = m
         statusItem = item
     }
+
+    @objc private func checkForUpdates() { Updater.shared.checkNow() }
 
     @objc private func copyLast() {
         guard let t = AppStore.shared.history.first?.text else { return }
@@ -132,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let app = NSMenuItem(); main.addItem(app)
         let am = NSMenu(); app.submenu = am
         am.addItem(withTitle: "About Rattle", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        am.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         am.addItem(NSMenuItem.separator())
         am.addItem(withTitle: "Hide Rattle", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         am.addItem(withTitle: "Quit Rattle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

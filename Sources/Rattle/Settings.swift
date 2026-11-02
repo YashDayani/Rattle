@@ -41,7 +41,7 @@ struct SettingsModal: View {
                     }.buttonStyle(.press).pointer()
                 }
                 Spacer()
-                Text("Rattle v1.0").font(Theme.sans(11)).foregroundStyle(Theme.muted).padding(.leading, 12)
+                Text("Rattle v\(Updater.shared.currentVersion)").font(Theme.sans(11)).foregroundStyle(Theme.muted).padding(.leading, 12)
             }
             .padding(.horizontal, 10).padding(.vertical, 22).frame(width: 210).background(Theme.window)
 
@@ -85,6 +85,12 @@ struct GeneralTab: View {
             }
             SettingRow(title: "Dictation language", detail: languageNote) {
                 Dropdown(selection: $store.settings.language, options: Self.languages.map { ($0.0, $0.1) }, width: 160)
+            }
+            SettingRow(title: "Updates", detail: "Rattle \(Updater.shared.currentVersion). Look for a newer version on GitHub.") {
+                PillButton(title: "Check now") { Router.shared.showSettings = false; Updater.shared.checkNow() }
+            }
+            SettingRow(title: "Check for updates at launch", detail: "Only asks GitHub for the latest release. Nothing else is sent.") {
+                Toggle("", isOn: $store.settings.autoCheckUpdates).toggleStyle(ThemeSwitchStyle()).labelsHidden()
             }
             SettingRow(title: "Onboarding", detail: "Walk through setup again.", last: true) {
                 PillButton(title: "Show again") {

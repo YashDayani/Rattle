@@ -233,6 +233,9 @@ struct Settings: Codable, Equatable {
     var commandTitle: String? { bindings.commandMode.first?.title }
     var micUID: String? = nil
     var language: String = "en"
+    /// Speak in any language and have Gemini listen to the audio and write what you meant in `translateTo`.
+    var translateEnabled: Bool = false
+    var translateTo: String = "hi"
     var model: String = "base.en"
     var speechEngine: SpeechEngine = .local
     var groqKey: String = ""
@@ -305,6 +308,8 @@ struct Settings: Codable, Equatable {
         }
         micUID = try c.decodeIfPresent(String.self, forKey: .micUID)
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? d.language
+        translateEnabled = try c.decodeIfPresent(Bool.self, forKey: .translateEnabled) ?? d.translateEnabled
+        translateTo = try c.decodeIfPresent(String.self, forKey: .translateTo) ?? d.translateTo
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? d.model
         speechEngine = try c.decodeIfPresent(SpeechEngine.self, forKey: .speechEngine) ?? d.speechEngine
         groqKey = try c.decodeIfPresent(String.self, forKey: .groqKey) ?? d.groqKey
@@ -340,7 +345,7 @@ struct Settings: Codable, Equatable {
     }
 
     enum Keys: String, CodingKey {
-        case bindings, shortcut, commandShortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, autoCheckUpdates, userName
+        case translateEnabled, translateTo, bindings, shortcut, commandShortcut, micUID, language, model, soundsEnabled, cleanup, tones, appearance, showInDock, showFlowBar, launchAtLogin, autoCheckUpdates, userName
         case speechEngine, groqKey, groqModel, meetingSpeechModel, summaryModel, summaryFromAudio
         case llmBaseURL, llmModel, llmKey, autoTransformID, commandModeEnabled, notetakerSummaries, notetakerCaptureSystemAudio, notetakerSaveAudio
         case mcpEnabled, mcpNotes, mcpMeetings, mcpDictations, mcpSnippets, mcpAllowEdits, onboardingDone

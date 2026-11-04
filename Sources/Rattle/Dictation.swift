@@ -195,7 +195,15 @@ final class DictationController: ObservableObject {
         let mode = self.mode, selection = self.selection
         Task {
             do {
-                let raw = try await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: dict.map { $0.replacement ?? $0.word }, cloud: settings.cloudSpeech)
+                let vocab = dict.map { $0.replacement ?? $0.word }
+                let raw: String
+                if settings.translateEnabled && mode == .dictate {
+                    // The audio itself goes to Gemini, which writes its meaning in the chosen language (no transcription step).
+                    let lang = CloudLanguages.name(settings.translateTo)
+                    raw = try await GeminiAudio.translate(wav: AudioRecorder.wav(from: samples), to: lang, vocabulary: vocab, settings: settings)
+                } else {
+                    raw = try await Transcriber.transcribe(samples: samples, model: model, language: settings.language, vocabulary: vocab, cloud: settings.cloudSpeech)
+                }
                 var text: String
                 var corrected = 0, dictFixes = 0
                 if mode == .command {

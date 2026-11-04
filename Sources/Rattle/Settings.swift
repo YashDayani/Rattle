@@ -86,6 +86,14 @@ struct GeneralTab: View {
             SettingRow(title: "Dictation language", detail: languageNote) {
                 Dropdown(selection: $store.settings.language, options: Self.languages.map { ($0.0, $0.1) }, width: 160)
             }
+            SettingRow(title: "Translate as you speak", detail: translateNote) {
+                Toggle("", isOn: $store.settings.translateEnabled).toggleStyle(ThemeSwitchStyle()).labelsHidden()
+            }
+            if store.settings.translateEnabled {
+                SettingRow(title: "Translate into", detail: "Your voice goes straight to Gemini, which writes what you meant in this language.") {
+                    Dropdown(selection: $store.settings.translateTo, options: CloudLanguages.all.map { ($0.0, $0.1) }, width: 160)
+                }
+            }
             SettingRow(title: "Updates", detail: "Rattle \(Updater.shared.currentVersion). Look for a newer version on GitHub.") {
                 PillButton(title: "Check now") { Router.shared.showSettings = false; Updater.shared.checkNow() }
             }
@@ -102,11 +110,16 @@ struct GeneralTab: View {
         }
         .onAppear { mics = AudioDevices.inputs() }
     }
+    private var translateNote: String {
+        if !GeminiAudio.supports(store.settings) { return "Needs Gemini as the AI server (Settings → AI). Audio is sent to Google, not a transcription service." }
+        if store.settings.llmKey.isEmpty { return "Add your Gemini API key in Settings → AI." }
+        return "Speak in any language. The AI listens to the audio and writes its meaning in another language."
+    }
     private var languageNote: String {
         if store.settings.speechEngine == .cloud { return "Groq will transcribe in this language." }
         return (WhisperModel.all.first { $0.id == store.settings.model }?.multilingual ?? false) ? "Whisper will transcribe in this language." : "English-only model selected. Pick a multilingual model to change language."
     }
-    static let languages = [("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("hi", "Hindi"), ("ja", "Japanese"), ("ko", "Korean"), ("zh", "Chinese"), ("ar", "Arabic"), ("ru", "Russian"), ("auto", "Auto-detect")]
+    static let languages = CloudLanguages.dictation
 }
 
 struct SystemTab: View {

@@ -162,6 +162,38 @@ enum GeminiAudio {
         return text
     }
 
+    /// Dictation translation: the short WAV goes inline to Gemini, which listens to it and writes what was meant in `language`.
+    static func translate(wav: Data, to language: String, vocabulary: [String], settings s: Settings) async throws -> String {
+        guard supports(s), !s.llmKey.isEmpty else { throw LLMError.server("Translate needs Gemini. Pick Gemini and add your key in Settings → AI.") }
+        let name = [s.summaryModel, s.llmModel].first { !$0.isEmpty } ?? "gemini-flash-latest"
+        let modelPath = name.hasPrefix("models/") ? name : "models/" + name
+        var system = "You are the translator inside a dictation app. Listen to the audio, understand what the speaker means, and write it naturally in \(language), as the speaker would say it if they spoke \(language). Keep names, numbers and technical terms accurate. Output ONLY the resulting text: no preface, no quotes, no notes. If the audio has no speech, output nothing."
+        if !vocabulary.isEmpty { system += " Spell these words exactly if they are spoken: " + vocabulary.joined(separator: ", ") + "." }
+        let payload = translatePayload(wav: wav, system: system, language: language)
+        var json: [String: Any] = [:]
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000) }
+            let (j, status) = try await send(path: "/v1beta/\(modelPath):generateContent", body: JSONSerialization.data(withJSONObject: payload), key: s.llmKey, timeout: 60)
+            json = j
+            if status == 200 { break }
+            if (status != 429 && status != 503) || attempt == 2 { throw LLMError.server(errorMessage(j, status)) }
+        }
+        return extractText(json)
+    }
+
+    static func translatePayload(wav: Data, system: String, language: String) -> [String: Any] {
+        [
+            "system_instruction": ["parts": [["text": system]]],
+            "contents": [["role": "user", "parts": [["inline_data": ["mime_type": "audio/wav", "data": wav.base64EncodedString()]], ["text": "Write what was said in \(language)."]]]],
+            "generationConfig": ["temperature": 0.2, "maxOutputTokens": 2048 + 2048]
+        ]
+    }
+
+    static func extractText(_ json: [String: Any]) -> String {
+        let parts = (((json["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any])?["parts"] as? [[String: Any]]) ?? []
+        return LLM.stripThinking(parts.filter { ($0["thought"] as? Bool) != true }.compactMap { $0["text"] as? String }.joined())
+    }
+
     private struct File { let name, uri, mime: String }
 
     private static func upload(_ url: URL, key: String) async throws -> File {
@@ -205,4 +237,11 @@ enum GeminiAudio {
     private static func errorMessage(_ json: [String: Any], _ status: Int) -> String {
         ((json["error"] as? [String: Any])?["message"] as? String).map { "Gemini: \($0)" } ?? "Gemini error (\(status))"
     }
+}
+
+enum CloudLanguages {
+    /// Languages Whisper dictation can be set to (plus auto-detect).
+    static let dictation = all + [("auto", "Auto-detect")]
+    static let all = [("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("hi", "Hindi"), ("ja", "Japanese"), ("ko", "Korean"), ("zh", "Chinese"), ("ar", "Arabic"), ("ru", "Russian")]
+    static func name(_ code: String) -> String { all.first { $0.0 == code }?.1 ?? code }
 }

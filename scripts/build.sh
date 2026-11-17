@@ -8,7 +8,7 @@
 #   RATTLE_HARDENED=1      with a "Developer ID Application: ..." identity: hardened runtime + entitlements, ready for notarization
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${RATTLE_VERSION:-1.2.2}"
+VERSION="${RATTLE_VERSION:-1.2.3}"
 BUILD="${RATTLE_BUILD:-1}"
 FLAGS=(-c release)
 [ "${RATTLE_UNIVERSAL:-0}" = "1" ] && FLAGS+=(--arch arm64 --arch x86_64)

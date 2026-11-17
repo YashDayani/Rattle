@@ -57,7 +57,7 @@ enum InsightCategory: String, CaseIterable {
     }
     static func from(bundleID: String?) -> InsightCategory {
         guard let b = bundleID?.lowercased() else { return .other }
-        let ai = ["com.anthropic.claudefordesktop", "com.openai.chat", "com.todesktop.230313mzl4w4u92", "com.microsoft.vscode", "dev.zed.zed", "com.apple.terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "com.exafunction.windsurf"]
+        let ai = ["com.anthropic.claudefordesktop", "com.openai.chat", "com.todesktop.230313mzl4w4u92", "com.microsoft.vscode", "dev.zed.zed", "com.apple.terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "com.exafunction.windsurf", "com.openai.codex", "com.t3tools.t3code", "com.google.antigravity-ide", "com.google.geminimacos", "dev.warp.warp-stable"]
         let docs = ["com.apple.iwork.pages", "com.microsoft.word", "com.apple.notes", "md.obsidian", "notion.id", "com.apple.textedit", "com.rattle.app"]
         if ai.contains(b) { return .ai }
         if docs.contains(b) { return .documents }
@@ -157,22 +157,23 @@ struct UsageTab: View {
     private func row(_ t: String) -> some View { Text(t).font(Theme.sans(14.5)).padding(.vertical, 3) }
 
     private var totalCard: some View {
-        let (thisMonth, lastMonth) = monthWords()
+        let (thisMonth, lastSame) = InsightStats.monthComparison(store.history)
+        let change = InsightStats.percentChange(thisMonth, from: lastSame)
         return TileCard {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .top) {
-                    Text(fmt(store.totalWords)).font(Theme.sans(36, .medium))
-                    Spacer()
-                    if lastMonth > 0 {
-                        let pct = Int((Double(thisMonth - lastMonth) / Double(lastMonth) * 100).rounded())
-                        Label { Text("\(abs(pct))% this month") } icon: { Icon(pct >= 0 ? "arrow.up.right" : "arrow.down.right", 14) }
-                            .font(Theme.sans(11.5)).padding(.horizontal, 10).padding(.vertical, 5).background(Capsule().fill(Theme.panel))
-                    }
-                }
+                Text(fmt(store.totalWords)).font(Theme.sans(36, .medium)).lineLimit(1).minimumScaleFactor(0.5)
                 label("TOTAL WORDS DICTATED")
                 Divider().overlay(Theme.line).padding(.vertical, 14)
-                HStack(spacing: 8) { Icon("desktopcomputer", 18); Text("Desktop").font(Theme.sans(14.5)) }
-                Text("\(fmt(store.totalWords)) words").font(Theme.sans(14.5))
+                HStack(spacing: 8) {
+                    row("\(fmt(thisMonth)) this month")
+                    if let pct = change {
+                        Label { Text("\(abs(pct))%") } icon: { Icon(pct >= 0 ? "arrow.up.right" : "arrow.down.right", 11) }
+                            .font(Theme.sans(11.5, .medium)).padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(Theme.panel))
+                            .tip("This month so far, against the same days of last month")
+                    }
+                }
+                row("\(fmt(store.totalDictations)) dictations")
+                row("\(InsightStats.hoursAndMinutes(store.minutesSaved)) saved vs typing")
                 Spacer(minLength: 0)
             }.padding(26).frame(maxHeight: .infinity, alignment: .topLeading)
         }
@@ -181,26 +182,33 @@ struct UsageTab: View {
     private var usageCard: some View {
         let groups = Dictionary(grouping: store.history) { InsightCategory.from(bundleID: $0.bundleID) }
         let total = max(1, store.history.count)
-        let apps = Set(store.history.map { $0.appName }).count
+        let apps = InsightStats.distinctApps(store.history)
         let rows = InsightCategory.allCases.map { ($0, groups[$0]?.count ?? 0) }.sorted { $0.1 > $1.1 }
         return TileCard {
-            VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Desktop usage").font(Theme.sans(24, .medium)).lineLimit(1).fixedSize()
-                    Spacer()
-                    Text("TOTAL APPS USED | \(apps)").font(Theme.caps(10.5)).tracking(0.6).lineLimit(1)
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Desktop usage").font(Theme.sans(24, .medium)).lineLimit(1)
+                    Text("\(apps) APP\(apps == 1 ? "" : "S") · \(fmt(store.history.count)) DICTATIONS").font(Theme.caps(10.5)).tracking(0.6).foregroundStyle(Theme.muted).lineLimit(1)
                 }
-                VStack(spacing: 16) {
+                VStack(spacing: 18) {
                     ForEach(rows, id: \.0) { cat, n in
                         let pct = Double(n) / Double(total)
-                        HStack(spacing: 14) {
-                            Icon(cat.icon, 19).frame(width: 24)
-                            GeometryReader { geo in
-                                let w = max(46, geo.size.width * 0.62 * CGFloat(pct))
-                                Text("\(Int((pct * 100).rounded()))%").font(Theme.sans(12, .semibold)).foregroundStyle(Theme.page)
-                                    .frame(width: w, height: 32).background(RoundedRectangle(cornerRadius: Theme.Radius.xs).fill(pct > 0.5 ? Theme.teal1 : (pct > 0.05 ? Theme.teal2 : Theme.teal3)))
-                            }.frame(height: 32)
-                            Text("\(n) \(cat.rawValue.uppercased())").font(Theme.caps(12)).tracking(0.8).frame(maxWidth: 170, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
+                        HStack(alignment: .top, spacing: 14) {
+                            Icon(cat.icon, 19).frame(width: 24).padding(.top, 1)
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    Text(cat.rawValue).font(Theme.sans(14.5, .medium)).lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    Text("\(fmt(n)) · \(Int((pct * 100).rounded()))%").font(Theme.sans(13)).foregroundStyle(Theme.muted).lineLimit(1)
+                                }
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(Theme.tan.opacity(0.35))
+                                        Capsule().fill(pct > 0.5 ? Theme.teal1 : (pct > 0.05 ? Theme.teal2 : Theme.teal3))
+                                            .frame(width: n == 0 ? 0 : max(8, geo.size.width * CGFloat(pct)))
+                                    }
+                                }.frame(height: 8)
+                            }
                         }
                     }
                 }
@@ -224,15 +232,6 @@ struct UsageTab: View {
                 }
             }.padding(28)
         }
-    }
-
-    private func monthWords() -> (Int, Int) {
-        let cal = Calendar.current
-        let now = Date()
-        let thisM = store.history.filter { cal.isDate($0.date, equalTo: now, toGranularity: .month) }.reduce(0) { $0 + $1.words }
-        let last = cal.date(byAdding: .month, value: -1, to: now)!
-        let lastM = store.history.filter { cal.isDate($0.date, equalTo: last, toGranularity: .month) }.reduce(0) { $0 + $1.words }
-        return (thisM, lastM)
     }
 
     private func fmt(_ n: Int) -> String { n.formatted(.number) }
@@ -269,7 +268,7 @@ struct Heatmap: View {
         let weekday = cal.component(.weekday, from: today) - 1                       // Sun = 0
         let start = cal.date(byAdding: .day, value: -(weeks - 1) * 7 - weekday, to: today)!
         let words = Dictionary(grouping: history) { cal.startOfDay(for: $0.date) }.mapValues { $0.reduce(0) { $0 + $1.words } }
-        let peak = max(1, words.values.max() ?? 1)
+        let peak = InsightStats.heatmapScale(Array(words.values))
         let days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
         return HStack(alignment: .top, spacing: 10) {
@@ -303,7 +302,7 @@ struct Heatmap: View {
     private func color(_ d: Date, _ today: Date, _ words: [Date: Int], _ peak: Int) -> Color {
         if d > today { return Theme.ink.opacity(0.05) }
         guard let n = words[d], n > 0 else { return Theme.tan.opacity(0.75) }
-        let f = Double(n) / Double(peak)
+        let f = min(1, Double(n) / Double(peak))
         return f > 0.66 ? Theme.teal1 : f > 0.33 ? Theme.teal2 : f > 0.12 ? Theme.teal3 : Theme.teal4
     }
 }
@@ -318,6 +317,8 @@ struct VoiceTab: View {
     private let stop: Set<String> = ["the", "and", "that", "this", "with", "for", "you", "are", "was", "but", "not", "have", "has", "had", "can", "will", "just", "its", "it's", "i'm", "from", "they", "them", "then", "there", "what", "when", "which", "would", "about", "your", "our", "out", "all", "get", "got", "like", "yeah", "okay", "know", "don't", "i'll", "i've", "gonna", "into", "also", "some", "how", "why", "who", "his", "her", "she", "him", "were", "been", "more", "than", "very", "too"]
 
     var body: some View {
+        let st = stats          // scans the whole history, so compute it once per render
+        let arch = archetype(st)
         let goal = 2000
         let total = store.totalWords
         let remaining = goal - (total % goal)
@@ -339,9 +340,9 @@ struct VoiceTab: View {
             TileCard {
                 HStack(alignment: .top, spacing: 20) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(archetype.0).font(Theme.serif(30))
+                        Text(arch.0).font(Theme.serif(30))
                         Text("VOICE PROFILE").font(Theme.caps(11.5)).tracking(1).foregroundStyle(Theme.muted)
-                        Text(aiBlurb ?? archetype.1).font(Theme.sans(16)).lineSpacing(5).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                        Text(aiBlurb ?? arch.1).font(Theme.sans(16)).lineSpacing(5).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                         if store.history.count >= 3 {
                             Button { refine() } label: {
                                 Label { Text(busy ? "Writing…" : "Refine with AI") } icon: { Icon("sparkles", 14) }.font(Theme.sans(12.5, .medium))
@@ -358,17 +359,17 @@ struct VoiceTab: View {
 
             HStack(alignment: .top, spacing: 16) {
                 VStack(spacing: 16) {
-                    quote(stats.catchphrase, "CATCHPHRASE")
-                    quote(stats.mostUsed, "MOST USED WORD")
-                    quote(stats.mostCorrected, "MOST CORRECTED WORD")
+                    quote(st.catchphrase, "CATCHPHRASE")
+                    quote(st.mostUsed, "MOST USED WORD")
+                    quote(st.mostCorrected, "MOST CORRECTED WORD")
                 }
                 TileCard {
                     VStack(alignment: .leading, spacing: 12) {
                         RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Color(red: 0.91, green: 0.47, blue: 0.33)).frame(width: 52, height: 52)
                             .overlay(Icon("sun.max.fill", 30).foregroundStyle(.white))
-                        Text(stats.peak).font(Theme.serif(28)).padding(.top, 8)
+                        Text(st.peak).font(Theme.serif(28)).padding(.top, 8)
                         Text("YOUR PEAK TIME & PLACE").font(Theme.caps(11.5)).tracking(1)
-                        Text(stats.peakText).font(Theme.sans(16)).lineSpacing(5).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                        Text(st.peakText).font(Theme.sans(16)).lineSpacing(5).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                         Spacer(minLength: 0)
                     }.padding(26).frame(maxHeight: .infinity, alignment: .topLeading)
                 }
@@ -401,7 +402,7 @@ struct VoiceTab: View {
             if toks.count >= 3 { for i in 0...(toks.count - 3) {
                 let g = Array(toks[i..<i + 3]); if g.contains(where: { !stop.contains($0) }) { tri[g.joined(separator: " "), default: 0] += 1 } } }
             for t in h.raw.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init) where fillers.contains(t) { fixed[t, default: 0] += 1 }
-            apps[h.appName, default: 0] += h.words
+            apps[InsightStats.appKey(h), default: 0] += h.words
             let key = "\(cal.component(.weekday, from: h.date))-\(cal.component(.hour, from: h.date))"
             slots[key, default: 0] += h.words
         }
@@ -413,7 +414,7 @@ struct VoiceTab: View {
         else if let first = store.history.first?.text.split(separator: " ").prefix(4).joined(separator: " ") { s.catchphrase = first }
         s.mostUsed = words.max(by: { $0.value < $1.value })?.key ?? "—"
         s.mostCorrected = fixed.max(by: { $0.value < $1.value })?.key ?? "—"
-        s.topApp = apps.max(by: { $0.value < $1.value })?.key ?? ""
+        s.topApp = apps.max(by: { $0.value < $1.value }).map { InsightStats.displayName(forKey: $0.key, in: store.history) } ?? ""
         if let best = slots.max(by: { $0.value < $1.value }) {
             let p = best.key.split(separator: "-").compactMap { Int($0) }
             let day = cal.weekdaySymbols[p[0] - 1]
@@ -425,13 +426,13 @@ struct VoiceTab: View {
         return s
     }
 
-    private var archetype: (String, String) {
+    private func archetype(_ st: Stats) -> (String, String) {
         let h = store.history
         guard !h.isEmpty else { return ("Your voice is waiting", "Dictate a few times and Rattle will describe how you speak: your pace, your habits and where you write.") }
         let avg = Double(store.totalWords) / Double(h.count)
         let name = avg < 8 ? "Quick Commander" : avg < 25 ? "Steady Communicator" : "Long-form Narrator"
         let style = avg < 8 ? "Your dictations are short and direct, built for quick replies and commands." : avg < 25 ? "You speak in clear, medium-length thoughts that read well with little editing." : "You talk through ideas at length, letting Rattle turn flowing speech into finished paragraphs."
-        return (name, "\(style) You average \(Int(avg.rounded())) words per dictation at about \(store.averageWPM) words per minute\(stats.topApp.isEmpty ? "." : ", most often in \(stats.topApp).")")
+        return (name, "\(style) You average \(Int(avg.rounded())) words per dictation at about \(store.averageWPM) words per minute\(st.topApp.isEmpty ? "." : ", most often in \(st.topApp).")")
     }
 
     private func refine() {

@@ -212,27 +212,50 @@ struct ModelTab: View {
     }
 
     private var localSettings: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Card {
-                ForEach(Array(WhisperModel.all.enumerated()), id: \.element.id) { i, m in
-                    SettingRow(title: m.title, detail: m.size + (m.installed ? " · Downloaded" : ""), last: i == WhisperModel.all.count - 1) {
-                        HStack(spacing: 10) {
-                            if let p = dl.progress[m.id] { ProgressView(value: p).frame(width: 90) }
-                            else if !m.installed { PillButton(title: "Download") { dl.download(m) } }
-                            if m.installed {
-                                if store.settings.model == m.id { Label { Text("Active") } icon: { Icon("checkmark.circle.fill", 14) }.font(Theme.sans(12.5, .medium)).foregroundStyle(.green) }
-                                else { PillButton(title: "Use") { store.settings.model = m.id } }
-                            }
-                        }
+        VStack(alignment: .leading, spacing: 22) {
+            modelGroup("Whisper", "Runs on your Mac with whisper.cpp. Larger models are more accurate but slower.")
+            modelGroup("Parakeet", "NVIDIA Parakeet on the Neural Engine. Very fast, lower battery use.")
+            if let e = dl.error { Text(e).font(Theme.sans(12)).foregroundStyle(.red) }
+            // The engine ships inside the app; only surface this if it's somehow missing.
+            if Transcriber.enginePath == nil {
+                Card {
+                    SettingRow(title: "whisper.cpp engine not found", detail: "Reinstall Rattle, or run: brew install whisper-cpp", last: true) {
+                        Icon("xmark.circle", 16).foregroundStyle(.red)
                     }
                 }
             }
-            if let e = dl.error { Text(e).font(Theme.sans(12)).foregroundStyle(.red) }
+        }
+    }
+
+    private func modelGroup(_ family: String, _ blurb: String) -> some View {
+        let models = WhisperModel.all.filter { $0.family == family }
+        return VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(family).font(Theme.sans(15, .semibold)).foregroundStyle(Theme.ink)
+                Text(blurb).font(Theme.sans(13)).foregroundStyle(Theme.muted)
+            }.padding(.horizontal, 4)
             Card {
-                SettingRow(title: "whisper.cpp engine", detail: Transcriber.enginePath ?? "Not found. Install with: brew install whisper-cpp", last: true) {
-                    Icon(Transcriber.enginePath != nil ? "checkmark.circle.fill" : "xmark.circle", 16).foregroundStyle(Transcriber.enginePath != nil ? .green : .red)
+                ForEach(Array(models.enumerated()), id: \.element.id) { i, m in
+                    SettingRow(title: m.title, detail: m.blurb + " · " + m.size, last: i == models.count - 1) {
+                        modelAction(m)
+                    }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private func modelAction(_ m: WhisperModel) -> some View {
+        if let p = dl.progress[m.id] {
+            HStack(spacing: 8) {
+                ProgressView(value: p).frame(width: 90)
+                if m.parakeet == nil { Text("\(Int(p * 100))%").font(Theme.sans(12.5)).foregroundStyle(Theme.muted).frame(width: 34, alignment: .trailing) }
+            }
+        } else if !m.installed {
+            PillButton(title: "Download") { dl.download(m) }
+        } else if store.settings.model == m.id {
+            Label { Text("Active") } icon: { Icon("checkmark.circle.fill", 14) }.font(Theme.sans(12.5, .medium)).foregroundStyle(.green)
+        } else {
+            PillButton(title: "Use") { store.settings.model = m.id }
         }
     }
 }

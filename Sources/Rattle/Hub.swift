@@ -214,7 +214,7 @@ struct SetupChecklist: View {
         let s = AppStore.shared.settings
         return s.cloudSpeechReady || (WhisperModel.all.first { $0.id == s.model }?.installed ?? false)
     }
-    private static var engineReady: Bool { AppStore.shared.settings.cloudSpeechReady || Transcriber.enginePath != nil }
+    private static var engineReady: Bool { AppStore.shared.settings.cloudSpeechReady || Transcriber.enginePath != nil || (WhisperModel.all.first { $0.id == AppStore.shared.settings.model }?.parakeet != nil) }
 
     var done: Int { [mic, ax, model, engine].filter { $0 }.count }
 

@@ -4,9 +4,13 @@ import PackageDescription
 let package = Package(
     name: "Rattle",
     platforms: [.macOS("14.4")],
+    dependencies: [
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.9.1"),
+    ],
     targets: [
         .executableTarget(
             name: "Rattle",
+            dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             path: "Sources/Rattle"
         ),
         .testTarget(name: "RattleTests", dependencies: ["Rattle"], path: "Tests/RattleTests")

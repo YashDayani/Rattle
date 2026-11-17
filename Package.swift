@@ -5,7 +5,7 @@ let package = Package(
     name: "Rattle",
     platforms: [.macOS("14.4")],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.9.1"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.8.2"),
     ],
     targets: [
         .executableTarget(

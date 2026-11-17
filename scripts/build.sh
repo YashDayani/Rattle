@@ -8,7 +8,7 @@
 #   RATTLE_HARDENED=1      with a "Developer ID Application: ..." identity: hardened runtime + entitlements, ready for notarization
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${RATTLE_VERSION:-1.0}"
+VERSION="${RATTLE_VERSION:-1.2.1}"
 BUILD="${RATTLE_BUILD:-1}"
 FLAGS=(-c release)
 [ "${RATTLE_UNIVERSAL:-0}" = "1" ] && FLAGS+=(--arch arm64 --arch x86_64)
@@ -17,6 +17,10 @@ BIN="$(swift build "${FLAGS[@]}" --show-bin-path)/Rattle"
 APP=build/Rattle.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Rattle"
+
+# Ship the whisper.cpp engine inside the app so users never have to brew install it.
+./scripts/build-whisper.sh
+cp build/whisper-bin/whisper-cli build/whisper-bin/whisper-server "$APP/Contents/Resources/"
 
 # App icon (.icns) so Finder, Dock and System Settings privacy lists show it.
 swift scripts/make-icon.swift build/AppIcon.iconset

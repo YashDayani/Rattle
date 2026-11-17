@@ -24,7 +24,7 @@ struct OnboardingView: View {
         _ = tick
         return OnboardingChecks(name: settings.userName, micGranted: Permissions.micGranted, axGranted: Permissions.accessibilityGranted,
                                 engine: settings.speechEngine, localModelInstalled: model.installed,
-                                whisperInstalled: Transcriber.enginePath != nil, groqKey: settings.groqKey)
+                                whisperInstalled: Transcriber.enginePath != nil || model.parakeet != nil, groqKey: settings.groqKey)
     }
 
     var body: some View {

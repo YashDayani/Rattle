@@ -1,20 +1,34 @@
 import Foundation
+import FluidAudio
 
 struct WhisperModel: Identifiable, Hashable {
     let id: String       // e.g. base.en
     let title: String
     let size: String
     let multilingual: Bool
+    var blurb: String = ""
+    /// Set for NVIDIA Parakeet models, which run on the Neural Engine through FluidAudio instead of whisper.cpp.
+    var parakeet: AsrModelVersion? = nil
     var fileName: String { "ggml-\(id).bin" }
     var remote: URL { URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")! }
     var localURL: URL { ModelStore.dir.appendingPathComponent(fileName) }
-    var installed: Bool { FileManager.default.fileExists(atPath: localURL.path) }
+    var family: String { parakeet != nil ? "Parakeet" : "Whisper" }
+    var installed: Bool {
+        if let v = parakeet { return AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: v), version: v) }
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
 
     static let all: [WhisperModel] = [
-        .init(id: "base.en", title: "Base (English)", size: "142 MB", multilingual: false),
-        .init(id: "small.en", title: "Small (English)", size: "466 MB", multilingual: false),
-        .init(id: "base", title: "Base (Multilingual)", size: "142 MB", multilingual: true),
-        .init(id: "small", title: "Small (Multilingual)", size: "466 MB", multilingual: true),
+        .init(id: "base.en", title: "Base (English)", size: "142 MB", multilingual: false, blurb: "English · fast"),
+        .init(id: "small.en", title: "Small (English)", size: "466 MB", multilingual: false, blurb: "English · balanced"),
+        .init(id: "base", title: "Base (Multilingual)", size: "142 MB", multilingual: true, blurb: "Multilingual · fast"),
+        .init(id: "small", title: "Small (Multilingual)", size: "466 MB", multilingual: true, blurb: "Multilingual · balanced"),
+        .init(id: "medium", title: "Medium", size: "1.5 GB", multilingual: true, blurb: "Multilingual · accurate, slower"),
+        .init(id: "large-v3-turbo-q5_0", title: "Large v3 Turbo, compact", size: "574 MB", multilingual: true, blurb: "Multilingual · near-top accuracy, small download"),
+        .init(id: "large-v3-turbo", title: "Large v3 Turbo", size: "1.6 GB", multilingual: true, blurb: "Multilingual · very accurate and fast"),
+        .init(id: "large-v3", title: "Large v3", size: "3.1 GB", multilingual: true, blurb: "Multilingual · most accurate, slowest"),
+        .init(id: "parakeet-v2", title: "Parakeet v2", size: "~480 MB", multilingual: false, blurb: "English · fastest, runs on the Neural Engine", parakeet: .v2),
+        .init(id: "parakeet-v3", title: "Parakeet v3", size: "~480 MB", multilingual: true, blurb: "25 European languages · runs on the Neural Engine", parakeet: .v3),
     ]
 }
 
@@ -43,6 +57,14 @@ final class ModelDownloader: NSObject, ObservableObject, URLSessionDownloadDeleg
         guard progress[m.id] == nil, !m.installed else { return }
         error = nil
         progress[m.id] = 0
+        if let v = m.parakeet {
+            Task {
+                do { try await AsrModels.download(version: v) } catch { self.error = error.localizedDescription }
+                progress[m.id] = nil
+                objectWillChange.send()
+            }
+            return
+        }
         let t = session.downloadTask(with: m.remote)
         active[t.taskIdentifier] = m
         t.resume()
@@ -100,6 +122,7 @@ final class WhisperServer {
     }
 
     func ensure(model: WhisperModel) {
+        if model.parakeet != nil { stop(); return }
         guard model.installed, let exe = serverPath else { return }
         if let p = process, p.isRunning, modelPath == model.localURL.path { return }
         stop()
@@ -195,6 +218,25 @@ struct CloudSpeech: Equatable {
     }
 }
 
+/// Parakeet (CoreML, Neural Engine). Keeps the loaded manager between dictations.
+actor ParakeetEngine {
+    static let shared = ParakeetEngine()
+    private var manager: AsrManager?
+    private var loaded: AsrModelVersion?
+
+    func transcribe(samples: [Float], version: AsrModelVersion) async throws -> String {
+        if manager == nil || loaded != version {
+            let models = try await AsrModels.downloadAndLoad(version: version)
+            let m = AsrManager(config: .default)
+            try await m.initialize(models: models)
+            manager = m; loaded = version
+        }
+        // Parakeet needs at least ~1s of audio.
+        let padded = samples.count < 16_000 ? samples + [Float](repeating: 0, count: 16_000 - samples.count) : samples
+        return try await manager!.transcribe(padded, source: .microphone).text
+    }
+}
+
 enum Transcriber {
     enum Failure: LocalizedError {
         case noEngine, noModel(String), failed(String)
@@ -218,6 +260,10 @@ enum Transcriber {
             return try await cloud.transcribe(wav: AudioRecorder.wav(from: samples), language: language, prompt: vocabulary.joined(separator: ", "))
         }
         guard model.installed else { throw Failure.noModel(model.title) }
+        if let v = model.parakeet {
+            do { return try await ParakeetEngine.shared.transcribe(samples: samples, version: v) }
+            catch { throw Failure.failed("Parakeet failed: \(error.localizedDescription)") }
+        }
         let lang = model.multilingual ? language : "en"
         if WhisperServer.shared.serverPath != nil {
             WhisperServer.shared.ensure(model: model)

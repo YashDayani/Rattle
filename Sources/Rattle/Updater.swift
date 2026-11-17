@@ -230,16 +230,30 @@ final class Updater: ObservableObject {
         let work = fm.temporaryDirectory.appendingPathComponent("rattle-update-\(UUID().uuidString)")
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
 
-        state = .working("Checking the checksum list…", nil)
-        let (sumsData, _) = try await URLSession.shared.data(from: sumsURL)
-        guard let expected = Self.expectedSHA256(in: String(decoding: sumsData, as: UTF8.self), for: Self.assetName) else {
-            throw UpdateError.message("\(Self.sumsName) does not list \(Self.assetName).")
+        // A signed release needs a signature file; refuse before downloading anything if it is missing or not from GitHub.
+        let sigURL: URL?
+        if publicKey != nil {
+            guard let u = offer.sigURL, isTrustedDownload(u) else {
+                throw UpdateError.message("This release isn’t signed, so it was not installed. Download it from the release page instead.")
+            }
+            sigURL = u
+        } else {
+            sigURL = nil
         }
 
+        // The checksum list, the signature and the zip are fetched at the same time: the slow part is often opening a connection
+        // to GitHub's download host, and doing it three times in a row tripled that wait.
+        state = .working("Connecting to GitHub…", nil)
         let zip = work.appendingPathComponent(Self.assetName)
+        async let sumsData = Self.fetch(sumsURL)
+        async let sigData = Self.fetch(sigURL)
         try await download(offer.zipURL, to: zip)
 
         state = .working("Verifying the download…", nil)
+        guard let sumsData = try await sumsData,
+              let expected = Self.expectedSHA256(in: String(decoding: sumsData, as: UTF8.self), for: Self.assetName) else {
+            throw UpdateError.message("\(Self.sumsName) does not list \(Self.assetName).")
+        }
         let actual = try await Task.detached { try Self.sha256(of: zip) }.value
         guard actual == expected else {
             throw UpdateError.message("The download does not match its published SHA-256 checksum, so it was discarded.")
@@ -248,12 +262,8 @@ final class Updater: ObservableObject {
         // The checksum only shows the zip is the one the release lists; whoever can edit the release can change both. The signature
         // can only be made with the private key, which is not on GitHub's release page, so it proves the zip is ours.
         if let key = publicKey {
-            guard let sigURL = offer.sigURL, isTrustedDownload(sigURL) else {
-                throw UpdateError.message("This release isn’t signed, so it was not installed. Download it from the release page instead.")
-            }
             state = .working("Checking the signature…", nil)
-            let (sigData, _) = try await URLSession.shared.data(from: sigURL)
-            let sigText = String(decoding: sigData, as: UTF8.self)
+            let sigText = String(decoding: try await sigData ?? Data(), as: UTF8.self)
             let valid = await Task.detached { Self.verifySignature(zip: zip, signatureBase64: sigText, publicKey: key) }.value
             guard valid else {
                 throw UpdateError.message("The update’s signature is not valid, so it was not installed. It does not come from the Rattle developer.")
@@ -294,23 +304,18 @@ final class Updater: ObservableObject {
         exit(0)
     }
 
+    /// Small file fetch used for the checksum list and the signature; nil in, nil out.
+    nonisolated private static func fetch(_ url: URL?) async throws -> Data? {
+        guard let url else { return nil }
+        return try await URLSession.shared.data(from: url).0
+    }
+
     private func download(_ url: URL, to dest: URL) async throws {
         state = .working("Downloading…", 0)
-        let (bytes, resp) = try await URLSession.shared.bytes(from: url)
-        if let http = resp as? HTTPURLResponse, http.statusCode != 200 { throw UpdateError.message("The download failed with status \(http.statusCode).") }
-        let total = resp.expectedContentLength
-        FileManager.default.createFile(atPath: dest.path, contents: nil)
-        let out = try FileHandle(forWritingTo: dest)
-        defer { try? out.close() }
-        var buf = Data(), got: Int64 = 0
-        for try await b in bytes {
-            buf.append(b)
-            if buf.count >= 1 << 18 {
-                try out.write(contentsOf: buf); got += Int64(buf.count); buf.removeAll(keepingCapacity: true)
-                if total > 0 { state = .working("Downloading…", Double(got) / Double(total)) }
-            }
+        let job = FileDownload(dest: dest) { [weak self] fraction in
+            Task { @MainActor in self?.state = .working("Downloading…", fraction) }
         }
-        try out.write(contentsOf: buf)
+        try await job.run(url)
     }
 
     private func validate(_ app: URL, offer: UpdateOffer) throws {
@@ -428,5 +433,50 @@ final class Updater: ObservableObject {
                        script.deletingLastPathComponent().path]
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
         return (try? p.run()) != nil
+    }
+}
+
+
+/// Downloads one file with URLSession's native download task, which streams straight to disk. (Reading `URLSession.bytes` one byte
+/// at a time is CPU-bound and several times slower than the network for a multi-megabyte update.)
+private final class FileDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let dest: URL
+    private let progress: @Sendable (Double) -> Void
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var failure: Error?
+    private var lastReported = -1.0
+
+    init(dest: URL, progress: @escaping @Sendable (Double) -> Void) { self.dest = dest; self.progress = progress }
+
+    func run(_ url: URL) async throws {
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+            continuation = c
+            session.downloadTask(with: url).resume()
+        }
+    }
+
+    func urlSession(_ s: URLSession, downloadTask t: URLSessionDownloadTask, didWriteData _: Int64, totalBytesWritten w: Int64, totalBytesExpectedToWrite e: Int64) {
+        guard e > 0 else { return }
+        let f = Double(w) / Double(e)
+        if f - lastReported >= 0.01 || f >= 1 { lastReported = f; progress(f) }   // at most ~100 UI updates
+    }
+
+    func urlSession(_ s: URLSession, downloadTask t: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        if let http = t.response as? HTTPURLResponse, http.statusCode != 200 {
+            failure = UpdateError.message("The download failed with status \(http.statusCode).")
+            return
+        }
+        do {
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: location, to: dest)   // the temp file is deleted when this returns
+        } catch { failure = error }
+    }
+
+    func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let c = continuation else { return }
+        continuation = nil
+        if let error = error ?? failure { c.resume(throwing: error) } else { c.resume() }
     }
 }
